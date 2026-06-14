@@ -79,8 +79,14 @@ Register a new user.
 }
 ```
 
+**Validation rules:**
+- `email` — must be a valid email address
+- `phone` — 10-digit Indian mobile number starting with 6–9 (leading `+91` stripped automatically)
+- `password` — min 8 characters, must include uppercase, lowercase, digit, and special character (per RBI Cybersecurity Framework for NBFCs, Dec 2022)
+
 **Errors:**
 - `409` — email or phone already registered
+- `422` — validation failure (invalid email, phone format, or weak password)
 
 ---
 
