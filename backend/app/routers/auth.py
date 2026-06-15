@@ -1,7 +1,10 @@
+from datetime import datetime, timedelta, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.security import create_access_token, hash_password, verify_password
 from app.db.dependencies import get_db
 from app.models.user import User
@@ -42,12 +45,47 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
         or_(User.email == payload.identifier, User.phone == payload.identifier)
     ).first()
 
-    if not user or not verify_password(payload.password, user.password_hash):
+    # Return generic error if user not found to avoid account enumeration
+    if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    now = datetime.now(timezone.utc)
+
+    if user.locked_until and user.locked_until > now:
+        remaining = int((user.locked_until - now).total_seconds() / 60) + 1
+        raise HTTPException(
+            status_code=status.HTTP_423_LOCKED,
+            detail=f"Account locked. Try again in {remaining} minute(s).",
+        )
+
+    if not verify_password(payload.password, user.password_hash):
+        user.failed_login_attempts += 1
+        user.last_failed_at = now
+
+        if user.failed_login_attempts >= settings.MAX_FAILED_LOGIN_ATTEMPTS:
+            user.locked_until = now + timedelta(minutes=settings.ACCOUNT_LOCKOUT_MINUTES)
+            db.commit()
+            raise HTTPException(
+                status_code=status.HTTP_423_LOCKED,
+                detail=f"Account locked for {settings.ACCOUNT_LOCKOUT_MINUTES} minutes due to too many failed login attempts.",
+            )
+
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Successful login — reset lockout state
+    user.failed_login_attempts = 0
+    user.locked_until = None
+    user.last_failed_at = None
+    db.commit()
 
     token = create_access_token({"sub": str(user.id)})
     return Token(access_token=token)

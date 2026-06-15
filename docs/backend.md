@@ -114,6 +114,7 @@ Login with email or phone number.
 
 **Errors:**
 - `401` — invalid credentials
+- `423` — account locked (too many failed attempts); response body includes how many minutes remain
 
 ---
 
@@ -134,6 +135,21 @@ Returns the profile of the currently authenticated user.
   "role": "user"
 }
 ```
+
+---
+
+## Security Policies
+
+### Account Lockout (RBI Cybersecurity Framework for NBFCs, Dec 2022)
+
+| Setting | Value | Config key |
+|---------|-------|------------|
+| Max failed attempts | 5 | `MAX_FAILED_LOGIN_ATTEMPTS` |
+| Lockout duration | 30 minutes | `ACCOUNT_LOCKOUT_MINUTES` |
+
+- Counter resets to 0 on successful login
+- Lockout expiry is checked on every login attempt — no manual unlock needed
+- Both thresholds are configurable via `.env`
 
 ---
 

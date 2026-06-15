@@ -1,6 +1,8 @@
 import uuid
+from datetime import datetime
+from typing import Optional
 
-from sqlalchemy import String
+from sqlalchemy import DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -33,4 +35,20 @@ class User(Base):
     role: Mapped[str] = mapped_column(
         String(50),
         default="user",
+    )
+
+    failed_login_attempts: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False,
+    )
+
+    locked_until: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    last_failed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
     )
