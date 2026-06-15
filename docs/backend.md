@@ -36,6 +36,9 @@ Create `backend/.env`:
 DATABASE_URL=postgresql://<user>:<password>@localhost/<dbname>
 SECRET_KEY=<your-secret-key>
 ACCESS_TOKEN_EXPIRE_MINUTES=30
+MAX_FAILED_LOGIN_ATTEMPTS=5
+ACCOUNT_LOCKOUT_MINUTES=30
+SQL_ECHO=false   # set to true only for local debugging — never in production
 ```
 
 ### 4. Run migrations
