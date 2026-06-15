@@ -1,14 +1,12 @@
-from datetime import date, timezone
+from datetime import date
 from dateutil.relativedelta import relativedelta
 from typing import List
 
 from app.models.repayment import RepaymentInstallment
 
-ANNUAL_INTEREST_RATE = 12.0  # % p.a.
 
-
-def generate(loan_id, principal: float, tenure_months: int, approval_date: date) -> List[RepaymentInstallment]:
-    r = ANNUAL_INTEREST_RATE / 12 / 100
+def generate(loan_id, principal: float, tenure_months: int, approval_date: date, annual_interest_rate: float) -> List[RepaymentInstallment]:
+    r = annual_interest_rate / 12 / 100
     emi = principal * r * (1 + r) ** tenure_months / ((1 + r) ** tenure_months - 1)
     emi = round(emi, 2)
 

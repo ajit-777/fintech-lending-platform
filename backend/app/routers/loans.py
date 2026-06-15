@@ -28,8 +28,10 @@ def create_loan_application(
         monthly_income=payload.monthly_income,
         amount=payload.amount,
         tenure_months=payload.tenure_months,
+        db=db,
     )
 
+    pricing = result.pricing
     now = datetime.now(timezone.utc)
     loan = LoanApplication(
         user_id=current_user.id,
@@ -42,6 +44,11 @@ def create_loan_application(
         status=result.decision,
         rejection_reason=result.reason if result.decision != "approved" else None,
         reviewed_at=now if result.decision != "pending" else None,
+        annual_interest_rate=pricing.annual_interest_rate if pricing else 0,
+        processing_fee=round(payload.amount * pricing.processing_fee_pct / 100, 2) if pricing else 0,
+        origination_fee=round(payload.amount * pricing.origination_fee_pct / 100, 2) if pricing else 0,
+        early_closure_fee_pct=pricing.early_closure_fee_pct if pricing else 0,
+        late_payment_penalty_pct=pricing.late_payment_penalty_pct if pricing else 0,
     )
     db.add(loan)
     db.commit()
@@ -53,6 +60,7 @@ def create_loan_application(
             principal=float(loan.amount),
             tenure_months=loan.tenure_months,
             approval_date=loan.reviewed_at.date(),
+            annual_interest_rate=float(loan.annual_interest_rate),
         )
         db.add_all(installments)
         db.commit()

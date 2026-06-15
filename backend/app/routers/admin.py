@@ -7,10 +7,12 @@ from sqlalchemy.orm import Session
 
 from app.db.dependencies import get_db
 from app.models.loan_application import LoanApplication
+from app.models.pricing_config import PricingConfig
 from app.models.repayment import RepaymentInstallment
 from app.models.user import User
 from app.routers.users import get_current_user
 from app.schemas.loan_application import LoanApplicationResponse, LoanReviewRequest
+from app.schemas.pricing_config import PricingConfigResponse, PricingConfigUpdate
 from app.schemas.repayment import RepaymentInstallmentResponse
 from app.services import repayment_schedule
 
@@ -81,6 +83,7 @@ def approve_loan(
         principal=float(loan.amount),
         tenure_months=loan.tenure_months,
         approval_date=loan.reviewed_at.date(),
+        annual_interest_rate=float(loan.annual_interest_rate),
     )
     db.add_all(installments)
     db.commit()
@@ -111,3 +114,32 @@ def reject_loan(
     db.commit()
     db.refresh(loan)
     return loan
+
+
+# ── Pricing config ────────────────────────────────────────────────────────────
+
+@router.get("/pricing", response_model=List[PricingConfigResponse])
+def list_pricing(admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    return db.query(PricingConfig).order_by(PricingConfig.cibil_min.desc()).all()
+
+
+@router.patch("/pricing/{config_id}", response_model=PricingConfigResponse)
+def update_pricing(
+    config_id: uuid.UUID,
+    payload: PricingConfigUpdate,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    config = db.query(PricingConfig).filter(PricingConfig.id == config_id).first()
+    if not config:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pricing config not found")
+
+    config.annual_interest_rate = payload.annual_interest_rate
+    config.processing_fee_pct = payload.processing_fee_pct
+    config.origination_fee_pct = payload.origination_fee_pct
+    config.early_closure_fee_pct = payload.early_closure_fee_pct
+    config.late_payment_penalty_pct = payload.late_payment_penalty_pct
+    config.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(config)
+    return config

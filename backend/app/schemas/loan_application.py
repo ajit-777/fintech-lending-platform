@@ -22,6 +22,11 @@ class LoanApplicationResponse(BaseModel):
     purpose: str
     cibil_score: int
     monthly_income: float
+    annual_interest_rate: float
+    processing_fee: float
+    origination_fee: float
+    early_closure_fee_pct: float
+    late_payment_penalty_pct: float
     status: str
     rejection_reason: Optional[str]
     reviewed_at: Optional[datetime]

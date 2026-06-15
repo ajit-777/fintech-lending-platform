@@ -47,6 +47,13 @@ class LoanApplication(Base):
         nullable=False,
     )
 
+    # Pricing locked at application time from pricing_config
+    annual_interest_rate: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False, default=12.0)
+    processing_fee: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, default=0)
+    origination_fee: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, default=0)
+    early_closure_fee_pct: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False, default=0)
+    late_payment_penalty_pct: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False, default=0)
+
     status: Mapped[str] = mapped_column(
         Enum("pending", "approved", "rejected", name="loan_status"),
         default="pending",
