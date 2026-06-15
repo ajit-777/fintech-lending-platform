@@ -7,10 +7,12 @@ from sqlalchemy.orm import Session
 
 from app.db.dependencies import get_db
 from app.models.loan_application import LoanApplication
+from app.models.repayment import RepaymentInstallment
 from app.models.user import User
 from app.routers.users import get_current_user
 from app.schemas.loan_application import LoanApplicationCreate, LoanApplicationResponse
-from app.services import loan_rules
+from app.schemas.repayment import RepaymentInstallmentResponse
+from app.services import loan_rules, repayment_schedule
 
 router = APIRouter(prefix="/loans", tags=["Loans"])
 
@@ -44,6 +46,17 @@ def create_loan_application(
     db.add(loan)
     db.commit()
     db.refresh(loan)
+
+    if result.decision == "approved":
+        installments = repayment_schedule.generate(
+            loan_id=loan.id,
+            principal=float(loan.amount),
+            tenure_months=loan.tenure_months,
+            approval_date=loan.reviewed_at.date(),
+        )
+        db.add_all(installments)
+        db.commit()
+
     return loan
 
 
@@ -58,6 +71,24 @@ def list_loan_applications(
         .order_by(LoanApplication.created_at.desc())
         .all()
     )
+
+
+@router.get("/{loan_id}/repayments", response_model=List[RepaymentInstallmentResponse])
+def get_repayment_schedule(
+    loan_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    loan = (
+        db.query(LoanApplication)
+        .filter(LoanApplication.id == loan_id, LoanApplication.user_id == current_user.id)
+        .first()
+    )
+    if not loan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Loan application not found")
+    if loan.status != "approved":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Repayment schedule is only available for approved loans")
+    return db.query(RepaymentInstallment).filter(RepaymentInstallment.loan_id == loan_id).order_by(RepaymentInstallment.installment_number).all()
 
 
 @router.get("/{loan_id}", response_model=LoanApplicationResponse)
