@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Optional
 
 from sqlalchemy import DateTime, Enum, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -36,16 +37,37 @@ class LoanApplication(Base):
         nullable=False,
     )
 
+    cibil_score: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+    )
+
+    monthly_income: Mapped[float] = mapped_column(
+        Numeric(12, 2),
+        nullable=False,
+    )
+
     status: Mapped[str] = mapped_column(
         Enum("pending", "approved", "rejected", name="loan_status"),
         default="pending",
         nullable=False,
     )
 
-    notes: Mapped[str] = mapped_column(
-        Text,
+    # Set by rules engine or admin
+    rejection_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Populated only for manual decisions
+    reviewed_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     )
+
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -60,4 +82,4 @@ class LoanApplication(Base):
         nullable=False,
     )
 
-    user = relationship("User", back_populates="loan_applications")
+    user = relationship("User", back_populates="loan_applications", foreign_keys=[user_id])

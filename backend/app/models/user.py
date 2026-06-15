@@ -53,4 +53,8 @@ class User(Base):
         nullable=True,
     )
 
-    loan_applications = relationship("LoanApplication", back_populates="user")
+    loan_applications = relationship(
+        "LoanApplication",
+        back_populates="user",
+        foreign_keys="LoanApplication.user_id",
+    )
