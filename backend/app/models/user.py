@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import DateTime, Integer, String
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 
@@ -52,3 +52,5 @@ class User(Base):
         DateTime(timezone=True),
         nullable=True,
     )
+
+    loan_applications = relationship("LoanApplication", back_populates="user")
