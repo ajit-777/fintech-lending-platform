@@ -68,6 +68,22 @@ def notify_loan_decision(db: Session, user, loan) -> None:
     )
 
 
+def notify_payment_received(db: Session, user, loan, installment) -> None:
+    send(
+        db=db,
+        user_id=user.id,
+        loan_id=loan.id,
+        channel="email",
+        event_type="installment_paid",
+        recipient=user.email,
+        subject=f"Payment received for installment #{installment.installment_number}",
+        body=(
+            f"We have received your payment of INR {installment.paid_amount} for installment "
+            f"#{installment.installment_number} (due {installment.due_date}). Thank you."
+        ),
+    )
+
+
 def notify_disbursement(db: Session, user, loan, disbursement) -> None:
     send(
         db=db,

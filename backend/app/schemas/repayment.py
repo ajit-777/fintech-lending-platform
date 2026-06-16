@@ -2,7 +2,7 @@ import uuid
 from datetime import date, datetime
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class RepaymentInstallmentResponse(BaseModel):
@@ -20,3 +20,7 @@ class RepaymentInstallmentResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class RepaymentPaymentRequest(BaseModel):
+    paid_amount: Optional[float] = Field(None, gt=0, description="Defaults to the EMI amount if not provided")

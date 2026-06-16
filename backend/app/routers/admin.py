@@ -17,7 +17,7 @@ from app.schemas.disbursement import DisbursementCreate, DisbursementResponse
 from app.schemas.loan_application import LoanApplicationResponse, LoanReviewRequest
 from app.schemas.notification import NotificationLogResponse
 from app.schemas.pricing_config import PricingConfigResponse, PricingConfigUpdate
-from app.schemas.repayment import RepaymentInstallmentResponse
+from app.schemas.repayment import RepaymentInstallmentResponse, RepaymentPaymentRequest
 from app.services import notifications, repayment_schedule
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -44,6 +44,39 @@ def get_repayment_schedule(
     if loan.status != "approved":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Repayment schedule is only available for approved loans")
     return db.query(RepaymentInstallment).filter(RepaymentInstallment.loan_id == loan_id).order_by(RepaymentInstallment.installment_number).all()
+
+
+@router.patch("/loans/{loan_id}/repayments/{installment_id}/pay", response_model=RepaymentInstallmentResponse)
+def mark_installment_paid(
+    loan_id: uuid.UUID,
+    installment_id: uuid.UUID,
+    payload: RepaymentPaymentRequest,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    loan = db.query(LoanApplication).filter(LoanApplication.id == loan_id).first()
+    if not loan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Loan application not found")
+
+    installment = (
+        db.query(RepaymentInstallment)
+        .filter(RepaymentInstallment.id == installment_id, RepaymentInstallment.loan_id == loan_id)
+        .first()
+    )
+    if not installment:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Installment not found")
+    if installment.status == "paid":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Installment is already marked as paid")
+
+    installment.status = "paid"
+    installment.paid_at = datetime.now(timezone.utc)
+    installment.paid_amount = payload.paid_amount if payload.paid_amount is not None else float(installment.emi_amount)
+    db.commit()
+    db.refresh(installment)
+
+    notifications.notify_payment_received(db, loan.user, loan, installment)
+
+    return installment
 
 
 @router.get("/loans", response_model=List[LoanApplicationResponse])
