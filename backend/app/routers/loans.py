@@ -6,10 +6,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.db.dependencies import get_db
+from app.models.disbursement import Disbursement
 from app.models.loan_application import LoanApplication
 from app.models.repayment import RepaymentInstallment
 from app.models.user import User
 from app.routers.users import get_current_user
+from app.schemas.disbursement import DisbursementResponse
 from app.schemas.loan_application import LoanApplicationCreate, LoanApplicationResponse
 from app.schemas.repayment import RepaymentInstallmentResponse
 from app.services import loan_rules, repayment_schedule
@@ -97,6 +99,26 @@ def get_repayment_schedule(
     if loan.status != "approved":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Repayment schedule is only available for approved loans")
     return db.query(RepaymentInstallment).filter(RepaymentInstallment.loan_id == loan_id).order_by(RepaymentInstallment.installment_number).all()
+
+
+@router.get("/{loan_id}/disbursement", response_model=DisbursementResponse)
+def get_disbursement(
+    loan_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    loan = (
+        db.query(LoanApplication)
+        .filter(LoanApplication.id == loan_id, LoanApplication.user_id == current_user.id)
+        .first()
+    )
+    if not loan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Loan application not found")
+
+    disbursement = db.query(Disbursement).filter(Disbursement.loan_id == loan_id).first()
+    if not disbursement:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Disbursement record not found")
+    return disbursement
 
 
 @router.get("/{loan_id}", response_model=LoanApplicationResponse)

@@ -91,3 +91,4 @@ class LoanApplication(Base):
 
     user = relationship("User", back_populates="loan_applications", foreign_keys=[user_id])
     repayment_schedule = relationship("RepaymentInstallment", back_populates="loan", order_by="RepaymentInstallment.installment_number")
+    disbursement = relationship("Disbursement", back_populates="loan", uselist=False)

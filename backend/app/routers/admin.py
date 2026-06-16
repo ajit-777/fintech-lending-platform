@@ -6,11 +6,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.db.dependencies import get_db
+from app.models.disbursement import Disbursement
 from app.models.loan_application import LoanApplication
 from app.models.pricing_config import PricingConfig
 from app.models.repayment import RepaymentInstallment
 from app.models.user import User
 from app.routers.users import get_current_user
+from app.schemas.disbursement import DisbursementCreate, DisbursementResponse
 from app.schemas.loan_application import LoanApplicationResponse, LoanReviewRequest
 from app.schemas.pricing_config import PricingConfigResponse, PricingConfigUpdate
 from app.schemas.repayment import RepaymentInstallmentResponse
@@ -114,6 +116,56 @@ def reject_loan(
     db.commit()
     db.refresh(loan)
     return loan
+
+
+# ── Disbursement ──────────────────────────────────────────────────────────────
+
+@router.post("/loans/{loan_id}/disburse", response_model=DisbursementResponse, status_code=status.HTTP_201_CREATED)
+def disburse_loan(
+    loan_id: uuid.UUID,
+    payload: DisbursementCreate,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    loan = db.query(LoanApplication).filter(LoanApplication.id == loan_id).first()
+    if not loan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Loan application not found")
+    if loan.status != "approved":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only approved loans can be disbursed")
+
+    existing = db.query(Disbursement).filter(Disbursement.loan_id == loan_id).first()
+    if existing:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Loan has already been disbursed")
+
+    gross_amount = float(loan.amount)
+    net_amount = round(gross_amount - float(loan.processing_fee) - float(loan.origination_fee), 2)
+
+    disbursement = Disbursement(
+        loan_id=loan.id,
+        gross_amount=gross_amount,
+        net_amount=net_amount,
+        bank_account_number=payload.bank_account_number,
+        ifsc_code=payload.ifsc_code,
+        reference_number=payload.reference_number,
+        disbursed_by=admin.id,
+        disbursed_at=datetime.now(timezone.utc),
+    )
+    db.add(disbursement)
+    db.commit()
+    db.refresh(disbursement)
+    return disbursement
+
+
+@router.get("/loans/{loan_id}/disbursement", response_model=DisbursementResponse)
+def get_disbursement_admin(
+    loan_id: uuid.UUID,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    disbursement = db.query(Disbursement).filter(Disbursement.loan_id == loan_id).first()
+    if not disbursement:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Disbursement record not found")
+    return disbursement
 
 
 # ── Pricing config ────────────────────────────────────────────────────────────
