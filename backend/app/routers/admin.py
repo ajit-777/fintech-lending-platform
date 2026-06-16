@@ -8,15 +8,17 @@ from sqlalchemy.orm import Session
 from app.db.dependencies import get_db
 from app.models.disbursement import Disbursement
 from app.models.loan_application import LoanApplication
+from app.models.notification import NotificationLog
 from app.models.pricing_config import PricingConfig
 from app.models.repayment import RepaymentInstallment
 from app.models.user import User
 from app.routers.users import get_current_user
 from app.schemas.disbursement import DisbursementCreate, DisbursementResponse
 from app.schemas.loan_application import LoanApplicationResponse, LoanReviewRequest
+from app.schemas.notification import NotificationLogResponse
 from app.schemas.pricing_config import PricingConfigResponse, PricingConfigUpdate
 from app.schemas.repayment import RepaymentInstallmentResponse
-from app.services import repayment_schedule
+from app.services import notifications, repayment_schedule
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -90,6 +92,8 @@ def approve_loan(
     db.add_all(installments)
     db.commit()
 
+    notifications.notify_loan_decision(db, loan.user, loan)
+
     return loan
 
 
@@ -115,6 +119,9 @@ def reject_loan(
     loan.reviewed_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(loan)
+
+    notifications.notify_loan_decision(db, loan.user, loan)
+
     return loan
 
 
@@ -153,6 +160,9 @@ def disburse_loan(
     db.add(disbursement)
     db.commit()
     db.refresh(disbursement)
+
+    notifications.notify_disbursement(db, loan.user, loan, disbursement)
+
     return disbursement
 
 
@@ -166,6 +176,22 @@ def get_disbursement_admin(
     if not disbursement:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Disbursement record not found")
     return disbursement
+
+
+# ── Notifications ─────────────────────────────────────────────────────────────
+
+@router.get("/loans/{loan_id}/notifications", response_model=List[NotificationLogResponse])
+def get_loan_notifications(
+    loan_id: uuid.UUID,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    return (
+        db.query(NotificationLog)
+        .filter(NotificationLog.loan_id == loan_id)
+        .order_by(NotificationLog.sent_at.desc())
+        .all()
+    )
 
 
 # ── Pricing config ────────────────────────────────────────────────────────────

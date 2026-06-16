@@ -14,7 +14,7 @@ from app.routers.users import get_current_user
 from app.schemas.disbursement import DisbursementResponse
 from app.schemas.loan_application import LoanApplicationCreate, LoanApplicationResponse
 from app.schemas.repayment import RepaymentInstallmentResponse
-from app.services import loan_rules, repayment_schedule
+from app.services import loan_rules, notifications, repayment_schedule
 
 router = APIRouter(prefix="/loans", tags=["Loans"])
 
@@ -65,6 +65,9 @@ def create_loan_application(
         )
         db.add_all(installments)
         db.commit()
+
+    if result.decision in ("approved", "rejected"):
+        notifications.notify_loan_decision(db, current_user, loan)
 
     return loan
 
