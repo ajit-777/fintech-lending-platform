@@ -20,6 +20,7 @@ class LoanApplicationResponse(BaseModel):
     amount: float
     tenure_months: int
     purpose: str
+    loan_type: str
     cibil_score: int
     monthly_income: float
     annual_interest_rate: float

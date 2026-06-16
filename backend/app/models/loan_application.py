@@ -37,6 +37,12 @@ class LoanApplication(Base):
         nullable=False,
     )
 
+    loan_type: Mapped[str] = mapped_column(
+        Enum("personal", "msme", name="loan_type"),
+        default="personal",
+        nullable=False,
+    )
+
     cibil_score: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
