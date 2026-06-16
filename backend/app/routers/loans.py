@@ -48,7 +48,6 @@ def create_loan_application(
         reviewed_at=now if result.decision != "pending" else None,
         annual_interest_rate=pricing.annual_interest_rate if pricing else 0,
         processing_fee=round(payload.amount * pricing.processing_fee_pct / 100, 2) if pricing else 0,
-        origination_fee=round(payload.amount * pricing.origination_fee_pct / 100, 2) if pricing else 0,
         early_closure_fee_pct=pricing.early_closure_fee_pct if pricing else 0,
         late_payment_penalty_pct=pricing.late_payment_penalty_pct if pricing else 0,
     )

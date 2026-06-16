@@ -138,7 +138,7 @@ def disburse_loan(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Loan has already been disbursed")
 
     gross_amount = float(loan.amount)
-    net_amount = round(gross_amount - float(loan.processing_fee) - float(loan.origination_fee), 2)
+    net_amount = round(gross_amount - float(loan.processing_fee), 2)
 
     disbursement = Disbursement(
         loan_id=loan.id,
@@ -188,7 +188,6 @@ def update_pricing(
 
     config.annual_interest_rate = payload.annual_interest_rate
     config.processing_fee_pct = payload.processing_fee_pct
-    config.origination_fee_pct = payload.origination_fee_pct
     config.early_closure_fee_pct = payload.early_closure_fee_pct
     config.late_payment_penalty_pct = payload.late_payment_penalty_pct
     config.updated_at = datetime.now(timezone.utc)

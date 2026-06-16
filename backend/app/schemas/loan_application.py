@@ -24,7 +24,6 @@ class LoanApplicationResponse(BaseModel):
     monthly_income: float
     annual_interest_rate: float
     processing_fee: float
-    origination_fee: float
     early_closure_fee_pct: float
     late_payment_penalty_pct: float
     status: str

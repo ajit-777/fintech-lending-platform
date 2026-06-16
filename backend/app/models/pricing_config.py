@@ -25,7 +25,6 @@ class PricingConfig(Base):
 
     annual_interest_rate: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False)  # % p.a.
     processing_fee_pct: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False)    # % of loan amount
-    origination_fee_pct: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False)   # % of loan amount
     early_closure_fee_pct: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False) # % of outstanding principal
     late_payment_penalty_pct: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False)  # % p.m. on overdue
 

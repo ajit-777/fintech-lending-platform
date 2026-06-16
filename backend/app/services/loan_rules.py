@@ -14,7 +14,6 @@ MAX_DTI_PERCENT = 40
 class PricingResult:
     annual_interest_rate: float
     processing_fee_pct: float
-    origination_fee_pct: float
     early_closure_fee_pct: float
     late_payment_penalty_pct: float
 
@@ -37,7 +36,6 @@ def get_pricing(cibil_score: int, db: Session) -> Optional[PricingResult]:
     return PricingResult(
         annual_interest_rate=float(config.annual_interest_rate),
         processing_fee_pct=float(config.processing_fee_pct),
-        origination_fee_pct=float(config.origination_fee_pct),
         early_closure_fee_pct=float(config.early_closure_fee_pct),
         late_payment_penalty_pct=float(config.late_payment_penalty_pct),
     )
