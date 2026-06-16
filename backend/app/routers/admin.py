@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.db.dependencies import get_db
@@ -82,12 +83,17 @@ def mark_installment_paid(
 @router.get("/loans", response_model=List[LoanApplicationResponse])
 def list_all_loans(
     loan_status: Optional[str] = Query(None, alias="status", pattern="^(pending|approved|rejected)$"),
+    identifier: Optional[str] = Query(None, description="Filter by applicant's email or phone number"),
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     query = db.query(LoanApplication)
     if loan_status:
         query = query.filter(LoanApplication.status == loan_status)
+    if identifier:
+        query = query.join(User, LoanApplication.user_id == User.id).filter(
+            or_(User.email == identifier, User.phone == identifier)
+        )
     return query.order_by(LoanApplication.created_at.desc()).all()
 
 
