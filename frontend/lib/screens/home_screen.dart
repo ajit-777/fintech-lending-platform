@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/loan_application.dart';
 import '../providers/auth_provider.dart';
+import '../services/kyc_service.dart';
 import '../services/loan_service.dart';
 import 'apply_loan_screen.dart';
+import 'kyc_screen.dart';
 import 'loan_detail_screen.dart';
 import 'login_screen.dart';
 
@@ -21,6 +23,21 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loansFuture = LoanService.listLoans();
+    _checkKYC();
+  }
+
+  Future<void> _checkKYC() async {
+    try {
+      final kyc = await KYCService.getMyKYC();
+      if (kyc['kyc_status'] != 'verified' && mounted) {
+        Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const KYCScreen()));
+      }
+    } on Exception {
+      // 404 means no KYC submitted yet
+      if (mounted) {
+        Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const KYCScreen()));
+      }
+    }
   }
 
   void _refresh() {

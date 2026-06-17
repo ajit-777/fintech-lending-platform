@@ -58,3 +58,9 @@ class User(Base):
         back_populates="user",
         foreign_keys="LoanApplication.user_id",
     )
+
+    kyc_profile = relationship(
+        "KYCProfile",
+        back_populates="user",
+        uselist=False,
+    )

@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.db.dependencies import get_db
 from app.models.disbursement import Disbursement
+from app.models.kyc_profile import KYCProfile
 from app.models.loan_application import LoanApplication
 from app.models.notification import NotificationLog
 from app.models.pricing_config import PricingConfig
@@ -16,6 +17,7 @@ from app.models.repayment import RepaymentInstallment
 from app.models.user import User
 from app.routers.users import get_current_user
 from app.schemas.disbursement import DisbursementResponse
+from app.schemas.kyc import KYCProfileResponse, KYCStatusOverride
 from app.schemas.loan_application import LoanApplicationResponse, LoanReviewRequest
 from app.schemas.notification import NotificationLogResponse
 from app.schemas.pricing_config import PricingConfigResponse, PricingConfigUpdate
@@ -270,6 +272,41 @@ def get_loan_notifications(
 def run_mark_overdue(admin: User = Depends(require_admin), db: Session = Depends(get_db)):
     count = overdue.mark_overdue(db)
     return {"marked_overdue": count}
+
+
+# ── KYC admin ────────────────────────────────────────────────────────────────
+
+@router.get("/users/{user_id}/kyc", response_model=KYCProfileResponse)
+def get_user_kyc(
+    user_id: uuid.UUID,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    profile = db.query(KYCProfile).filter(KYCProfile.user_id == user_id).first()
+    if not profile:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="KYC profile not found for this user")
+    return profile
+
+
+@router.patch("/users/{user_id}/kyc/status", response_model=KYCProfileResponse)
+def override_kyc_status(
+    user_id: uuid.UUID,
+    payload: KYCStatusOverride,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    profile = db.query(KYCProfile).filter(KYCProfile.user_id == user_id).first()
+    if not profile:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="KYC profile not found for this user")
+
+    now = datetime.now(timezone.utc)
+    profile.kyc_status = payload.kyc_status
+    profile.rejection_reason = payload.rejection_reason if payload.kyc_status == "rejected" else None
+    profile.verified_at = now if payload.kyc_status == "verified" else None
+    profile.updated_at = now
+    db.commit()
+    db.refresh(profile)
+    return profile
 
 
 # ── Pricing config ────────────────────────────────────────────────────────────

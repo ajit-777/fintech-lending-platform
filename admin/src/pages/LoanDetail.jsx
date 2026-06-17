@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   getLoan, approveLoan, rejectLoan, disburseLoan,
-  getRepayments, markRepaymentPaid,
+  getRepayments, markRepaymentPaid, getUserKYC, overrideKYCStatus,
 } from '../api/loans';
 
 const STATUS_COLORS = {
@@ -19,11 +19,14 @@ export default function LoanDetail() {
   const navigate = useNavigate();
   const [loan, setLoan] = useState(null);
   const [repayments, setRepayments] = useState([]);
+  const [kyc, setKyc] = useState(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState('');
   const [rejectReason, setRejectReason] = useState('');
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [showDisburseModal, setShowDisburseModal] = useState(false);
+  const [showKYCRejectModal, setShowKYCRejectModal] = useState(false);
+  const [kycRejectReason, setKycRejectReason] = useState('');
   const [referenceNumber, setReferenceNumber] = useState('');
   const [error, setError] = useState('');
 
@@ -36,6 +39,8 @@ export default function LoanDetail() {
       ]);
       setLoan(loanRes.data);
       setRepayments(repRes.data);
+      // Load KYC for this user separately (may 404 if not submitted)
+      getUserKYC(loanRes.data.user_id).then(r => setKyc(r.data)).catch(() => setKyc(null));
     } catch {
       setError('Failed to load loan.');
     } finally {
@@ -82,6 +87,33 @@ export default function LoanDetail() {
       await load();
     } catch (err) {
       setError(err.response?.data?.detail || 'Disburse failed');
+    } finally {
+      setActionLoading('');
+    }
+  }
+
+  async function handleKYCApprove() {
+    setActionLoading('kyc-approve');
+    try {
+      const res = await overrideKYCStatus(loan.user_id, { kyc_status: 'verified' });
+      setKyc(res.data);
+    } catch (err) {
+      setError(err.response?.data?.detail || 'KYC approval failed');
+    } finally {
+      setActionLoading('');
+    }
+  }
+
+  async function handleKYCReject() {
+    if (!kycRejectReason.trim()) return;
+    setActionLoading('kyc-reject');
+    try {
+      const res = await overrideKYCStatus(loan.user_id, { kyc_status: 'rejected', rejection_reason: kycRejectReason.trim() });
+      setKyc(res.data);
+      setShowKYCRejectModal(false);
+      setKycRejectReason('');
+    } catch (err) {
+      setError(err.response?.data?.detail || 'KYC rejection failed');
     } finally {
       setActionLoading('');
     }
@@ -145,6 +177,71 @@ export default function LoanDetail() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* KYC card */}
+      <div className="bg-white rounded-xl shadow p-6 mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold text-gray-800">KYC Status</h3>
+          {kyc ? (
+            <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+              kyc.kyc_status === 'verified' ? 'bg-green-100 text-green-700' :
+              kyc.kyc_status === 'rejected' ? 'bg-red-100 text-red-700' :
+              kyc.kyc_status === 'submitted' ? 'bg-yellow-100 text-yellow-700' :
+              'bg-gray-100 text-gray-500'
+            }`}>
+              {kyc.kyc_status.toUpperCase()}
+            </span>
+          ) : (
+            <span className="px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-500">NOT SUBMITTED</span>
+          )}
+        </div>
+        {kyc ? (
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            {[
+              ['PAN', kyc.pan_number],
+              ['PAN Verified', kyc.pan_verified ? '✓ Yes' : '✗ No'],
+              ['Name (PAN)', kyc.pan_name || '—'],
+              ['Aadhaar (last 4)', kyc.aadhaar_last4 ? `XXXX-XXXX-${kyc.aadhaar_last4}` : '—'],
+              ['Aadhaar Verified', kyc.aadhaar_verified ? '✓ Yes' : '✗ No'],
+              ['Date of Birth', kyc.date_of_birth || '—'],
+              ['Address', kyc.address_line1 ? `${kyc.address_line1}${kyc.address_line2 ? ', ' + kyc.address_line2 : ''}, ${kyc.city}, ${kyc.state} - ${kyc.pincode}` : '—'],
+            ].map(([label, value]) => (
+              <div key={label} className={label === 'Address' ? 'col-span-2' : ''}>
+                <span className="text-gray-400 text-xs">{label}</span>
+                <p className="font-medium text-gray-700">{value}</p>
+              </div>
+            ))}
+            {kyc.rejection_reason && (
+              <div className="col-span-2">
+                <span className="text-gray-400 text-xs">Rejection Reason</span>
+                <p className="font-medium text-red-600">{kyc.rejection_reason}</p>
+              </div>
+            )}
+          </div>
+        ) : (
+          <p className="text-sm text-gray-400">Borrower has not submitted KYC details yet.</p>
+        )}
+        {kyc && kyc.kyc_status !== 'verified' && (
+          <div className="flex gap-3 mt-4">
+            <button
+              onClick={handleKYCApprove}
+              disabled={!!actionLoading}
+              className="bg-green-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50"
+            >
+              {actionLoading === 'kyc-approve' ? 'Approving…' : 'Approve KYC'}
+            </button>
+            {kyc.kyc_status !== 'rejected' && (
+              <button
+                onClick={() => setShowKYCRejectModal(true)}
+                disabled={!!actionLoading}
+                className="bg-red-500 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-red-600 disabled:opacity-50"
+              >
+                Reject KYC
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Action buttons */}
@@ -297,6 +394,32 @@ export default function LoanDetail() {
                 className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
               >
                 {actionLoading === 'disburse' ? 'Disbursing…' : 'Confirm Disburse'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* KYC reject modal */}
+      {showKYCRejectModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl">
+            <h3 className="font-semibold text-gray-800 mb-3">Reject KYC</h3>
+            <textarea
+              className="w-full border rounded-lg px-3 py-2 text-sm h-24 resize-none focus:outline-none focus:ring-2 focus:ring-red-400"
+              placeholder="Reason for KYC rejection…"
+              value={kycRejectReason}
+              onChange={(e) => setKycRejectReason(e.target.value)}
+            />
+            <div className="flex gap-3 mt-4 justify-end">
+              <button onClick={() => setShowKYCRejectModal(false)} className="text-sm text-gray-500 hover:text-gray-700">
+                Cancel
+              </button>
+              <button
+                onClick={handleKYCReject}
+                disabled={!kycRejectReason.trim() || actionLoading === 'kyc-reject'}
+                className="bg-red-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-600 disabled:opacity-50"
+              >
+                {actionLoading === 'kyc-reject' ? 'Rejecting…' : 'Confirm Reject'}
               </button>
             </div>
           </div>

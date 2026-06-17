@@ -4,5 +4,6 @@ from app.models.repayment import RepaymentInstallment
 from app.models.pricing_config import PricingConfig
 from app.models.disbursement import Disbursement
 from app.models.notification import NotificationLog
+from app.models.kyc_profile import KYCProfile
 
-__all__ = ["User", "LoanApplication", "RepaymentInstallment", "PricingConfig", "Disbursement", "NotificationLog"]
+__all__ = ["User", "LoanApplication", "RepaymentInstallment", "PricingConfig", "Disbursement", "NotificationLog", "KYCProfile"]

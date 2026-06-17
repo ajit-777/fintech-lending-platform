@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.db.dependencies import get_db
 from app.models.disbursement import Disbursement
+from app.models.kyc_profile import KYCProfile
 from app.models.loan_application import LoanApplication
 from app.models.repayment import RepaymentInstallment
 from app.models.user import User
@@ -25,6 +26,13 @@ def create_loan_application(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    kyc = db.query(KYCProfile).filter(KYCProfile.user_id == current_user.id).first()
+    if not kyc or kyc.kyc_status != "verified":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="KYC verification is required before applying for a loan",
+        )
+
     result = loan_rules.evaluate(
         cibil_score=payload.cibil_score,
         monthly_income=payload.monthly_income,

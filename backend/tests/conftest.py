@@ -10,7 +10,9 @@ import app.models  # noqa: F401 — registers all models on Base
 from app.db.base import Base
 from app.db.dependencies import get_db
 from app.main import app
+from app.models.kyc_profile import KYCProfile
 from app.models.pricing_config import PricingConfig
+from app.models.user import User as UserModel
 
 
 def _make_engine():
@@ -84,10 +86,47 @@ def client():
 
 # ── Helpers used across test files ────────────────────────────────────────────
 
-def register(client, email="user@test.com", phone="+919000000001", password="Test@1234"):
+def register(client, email="user@test.com", phone="+919000000001", password="Test@1234", verified_kyc=True):
     r = client.post("/auth/register", json={"email": email, "phone": phone, "password": password})
     assert r.status_code == 201, r.text
-    return r.json()["access_token"]
+    token = r.json()["access_token"]
+    if verified_kyc:
+        _seed_verified_kyc(email)
+    return token
+
+
+def _seed_verified_kyc(email: str) -> None:
+    """Directly insert a verified KYC profile for a test user via the DB override."""
+    db_gen = app.dependency_overrides[get_db]()
+    db = next(db_gen)
+    user = db.query(UserModel).filter(UserModel.email == email).first()
+    if user:
+        existing = db.query(KYCProfile).filter(KYCProfile.user_id == user.id).first()
+        if not existing:
+            now = datetime.now(timezone.utc)
+            profile = KYCProfile(
+                user_id=user.id,
+                pan_number="ABCDE1234F",
+                pan_verified=True,
+                pan_name="TEST USER",
+                aadhaar_last4="1234",
+                aadhaar_verified=True,
+                date_of_birth="1990-01-01",
+                address_line1="123 Test Street",
+                city="Mumbai",
+                state="Maharashtra",
+                pincode="400001",
+                kyc_status="verified",
+                submitted_at=now,
+                verified_at=now,
+                updated_at=now,
+            )
+            db.add(profile)
+            db.commit()
+    try:
+        next(db_gen)
+    except StopIteration:
+        pass
 
 
 def register_admin(client, email="admin@test.com", phone="+919000000099", password="Admin@1234"):
