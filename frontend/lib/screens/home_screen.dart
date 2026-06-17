@@ -24,13 +24,16 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _refresh() {
-    setState(() => _loansFuture = LoanService.listLoans());
+    final future = LoanService.listLoans();
+    setState(() => _loansFuture = future);
   }
 
   Color _statusColor(String status) {
     switch (status) {
       case 'approved':
         return Colors.green;
+      case 'disbursed':
+        return Colors.blue;
       case 'rejected':
         return Colors.red;
       default:

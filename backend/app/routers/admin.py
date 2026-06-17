@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, Field
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
@@ -14,7 +15,7 @@ from app.models.pricing_config import PricingConfig
 from app.models.repayment import RepaymentInstallment
 from app.models.user import User
 from app.routers.users import get_current_user
-from app.schemas.disbursement import DisbursementCreate, DisbursementResponse
+from app.schemas.disbursement import DisbursementResponse
 from app.schemas.loan_application import LoanApplicationResponse, LoanReviewRequest
 from app.schemas.notification import NotificationLogResponse
 from app.schemas.pricing_config import PricingConfigResponse, PricingConfigUpdate
@@ -42,8 +43,8 @@ def get_repayment_schedule(
     loan = db.query(LoanApplication).filter(LoanApplication.id == loan_id).first()
     if not loan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Loan application not found")
-    if loan.status != "approved":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Repayment schedule is only available for approved loans")
+    if loan.status not in ("approved", "disbursed"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Repayment schedule is only available for approved or disbursed loans")
     return db.query(RepaymentInstallment).filter(RepaymentInstallment.loan_id == loan_id).order_by(RepaymentInstallment.installment_number).all()
 
 
@@ -80,9 +81,18 @@ def mark_installment_paid(
     return installment
 
 
+def _enrich(loan: LoanApplication, db: Session) -> LoanApplicationResponse:
+    user = db.query(User).filter(User.id == loan.user_id).first()
+    data = LoanApplicationResponse.model_validate(loan)
+    if user:
+        data.user_email = user.email
+        data.user_phone = user.phone
+    return data
+
+
 @router.get("/loans", response_model=List[LoanApplicationResponse])
 def list_all_loans(
-    loan_status: Optional[str] = Query(None, alias="status", pattern="^(pending|approved|rejected)$"),
+    loan_status: Optional[str] = Query(None, alias="status", pattern="^(pending|approved|rejected|disbursed)$"),
     identifier: Optional[str] = Query(None, description="Filter by applicant's email or phone number"),
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
@@ -94,7 +104,20 @@ def list_all_loans(
         query = query.join(User, LoanApplication.user_id == User.id).filter(
             or_(User.email == identifier, User.phone == identifier)
         )
-    return query.order_by(LoanApplication.created_at.desc()).all()
+    loans = query.order_by(LoanApplication.created_at.desc()).all()
+    return [_enrich(loan, db) for loan in loans]
+
+
+@router.get("/loans/{loan_id}", response_model=LoanApplicationResponse)
+def get_loan(
+    loan_id: uuid.UUID,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    loan = db.query(LoanApplication).filter(LoanApplication.id == loan_id).first()
+    if not loan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Loan application not found")
+    return _enrich(loan, db)
 
 
 @router.patch("/loans/{loan_id}/approve", response_model=LoanApplicationResponse)
@@ -133,7 +156,7 @@ def approve_loan(
 
     notifications.notify_loan_decision(db, loan.user, loan)
 
-    return loan
+    return _enrich(loan, db)
 
 
 @router.patch("/loans/{loan_id}/reject", response_model=LoanApplicationResponse)
@@ -161,15 +184,19 @@ def reject_loan(
 
     notifications.notify_loan_decision(db, loan.user, loan)
 
-    return loan
+    return _enrich(loan, db)
 
 
 # ── Disbursement ──────────────────────────────────────────────────────────────
 
+class DisburseConfirm(BaseModel):
+    reference_number: str = Field(..., min_length=3, max_length=100)
+
+
 @router.post("/loans/{loan_id}/disburse", response_model=DisbursementResponse, status_code=status.HTTP_201_CREATED)
 def disburse_loan(
     loan_id: uuid.UUID,
-    payload: DisbursementCreate,
+    payload: DisburseConfirm,
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
@@ -178,6 +205,8 @@ def disburse_loan(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Loan application not found")
     if loan.status != "approved":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only approved loans can be disbursed")
+    if not loan.bank_account_number or not loan.ifsc_code:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Borrower has not provided bank account details")
 
     existing = db.query(Disbursement).filter(Disbursement.loan_id == loan_id).first()
     if existing:
@@ -190,12 +219,13 @@ def disburse_loan(
         loan_id=loan.id,
         gross_amount=gross_amount,
         net_amount=net_amount,
-        bank_account_number=payload.bank_account_number,
-        ifsc_code=payload.ifsc_code,
+        bank_account_number=loan.bank_account_number,
+        ifsc_code=loan.ifsc_code,
         reference_number=payload.reference_number,
         disbursed_by=admin.id,
         disbursed_at=datetime.now(timezone.utc),
     )
+    loan.status = "disbursed"
     db.add(disbursement)
     db.commit()
     db.refresh(disbursement)

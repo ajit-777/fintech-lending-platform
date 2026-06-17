@@ -9,6 +9,8 @@ class LoanService {
     required String purpose,
     required int cibilScore,
     required double monthlyIncome,
+    required String bankAccountNumber,
+    required String ifscCode,
     String? notes,
   }) async {
     final response = await ApiClient.post('/loans', {
@@ -17,6 +19,8 @@ class LoanService {
       'purpose': purpose,
       'cibil_score': cibilScore,
       'monthly_income': monthlyIncome,
+      'bank_account_number': bankAccountNumber,
+      'ifsc_code': ifscCode,
       if (notes != null) 'notes': notes,
     });
     return LoanApplication.fromJson(response);

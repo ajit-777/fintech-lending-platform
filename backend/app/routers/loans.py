@@ -43,6 +43,8 @@ def create_loan_application(
         cibil_score=payload.cibil_score,
         monthly_income=payload.monthly_income,
         notes=payload.notes,
+        bank_account_number=payload.bank_account_number,
+        ifsc_code=payload.ifsc_code,
         status=result.decision,
         rejection_reason=result.reason if result.decision != "approved" else None,
         reviewed_at=now if result.decision != "pending" else None,
@@ -98,8 +100,8 @@ def get_repayment_schedule(
     )
     if not loan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Loan application not found")
-    if loan.status != "approved":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Repayment schedule is only available for approved loans")
+    if loan.status not in ("approved", "disbursed"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Repayment schedule is only available for approved or disbursed loans")
     return db.query(RepaymentInstallment).filter(RepaymentInstallment.loan_id == loan_id).order_by(RepaymentInstallment.installment_number).all()
 
 
