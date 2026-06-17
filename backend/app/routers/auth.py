@@ -55,8 +55,12 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
 
     now = datetime.now(timezone.utc)
 
-    if user.locked_until and user.locked_until > now:
-        remaining = int((user.locked_until - now).total_seconds() / 60) + 1
+    locked_until = user.locked_until
+    if locked_until is not None and locked_until.tzinfo is None:
+        locked_until = locked_until.replace(tzinfo=timezone.utc)
+
+    if locked_until and locked_until > now:
+        remaining = int((locked_until - now).total_seconds() / 60) + 1
         raise HTTPException(
             status_code=status.HTTP_423_LOCKED,
             detail=f"Account locked. Try again in {remaining} minute(s).",

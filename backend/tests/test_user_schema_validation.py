@@ -12,7 +12,7 @@ def _make_user(**overrides):
 
 def test_valid_user_passes():
     user = _make_user()
-    assert user.phone == "9876543210"
+    assert user.phone == "+919876543210"
 
 
 @pytest.mark.parametrize("phone", ["12345", "5876543210", "98765432101", "987654321"])
@@ -23,7 +23,7 @@ def test_invalid_phone_formats_rejected(phone):
 
 def test_phone_with_country_code_prefix_is_normalized():
     user = _make_user(phone="+919876543210")
-    assert user.phone == "9876543210"
+    assert user.phone == "+919876543210"
 
 
 @pytest.mark.parametrize("password", [

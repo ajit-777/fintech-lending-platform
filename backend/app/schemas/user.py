@@ -18,7 +18,7 @@ def _validate_phone(v: str) -> str:
         raise ValueError(
             "Phone must be a valid 10-digit Indian mobile number (starting with 6–9)"
         )
-    return digits
+    return f"+91{digits}"
 
 
 def _validate_password(v: str) -> str:

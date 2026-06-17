@@ -125,7 +125,7 @@ def get_loan(
 @router.patch("/loans/{loan_id}/approve", response_model=LoanApplicationResponse)
 def approve_loan(
     loan_id: uuid.UUID,
-    payload: LoanReviewRequest,
+    payload: Optional[LoanReviewRequest] = None,
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
@@ -142,7 +142,7 @@ def approve_loan(
     loan.rejection_reason = None
     loan.reviewed_by = admin.id
     loan.reviewed_at = datetime.now(timezone.utc)
-    loan.notes = payload.reason
+    loan.notes = payload.reason if payload else None
     db.commit()
     db.refresh(loan)
 
@@ -205,14 +205,13 @@ def disburse_loan(
     loan = db.query(LoanApplication).filter(LoanApplication.id == loan_id).first()
     if not loan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Loan application not found")
+    existing = db.query(Disbursement).filter(Disbursement.loan_id == loan_id).first()
+    if existing:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Loan has already been disbursed")
     if loan.status != "approved":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only approved loans can be disbursed")
     if not loan.bank_account_number or not loan.ifsc_code:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Borrower has not provided bank account details")
-
-    existing = db.query(Disbursement).filter(Disbursement.loan_id == loan_id).first()
-    if existing:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Loan has already been disbursed")
 
     gross_amount = float(loan.amount)
     net_amount = round(gross_amount - float(loan.processing_fee), 2)

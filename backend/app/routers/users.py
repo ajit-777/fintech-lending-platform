@@ -1,3 +1,5 @@
+import uuid as _uuid
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
@@ -23,7 +25,7 @@ def get_current_user(
             detail="Invalid or expired token",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    user = db.query(User).filter(User.id == token_data.user_id).first()
+    user = db.query(User).filter(User.id == _uuid.UUID(token_data.user_id)).first()
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
