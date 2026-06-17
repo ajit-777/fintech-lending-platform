@@ -17,6 +17,7 @@ class RepaymentInstallmentResponse(BaseModel):
     status: str
     paid_at: Optional[datetime]
     paid_amount: Optional[float]
+    penalty_amount: Optional[float]
 
     class Config:
         from_attributes = True

@@ -11,6 +11,7 @@ const STATUS_COLORS = {
   rejected: 'bg-red-100 text-red-800',
   disbursed: 'bg-blue-100 text-blue-800',
   paid: 'bg-green-100 text-green-700',
+  overdue: 'bg-red-100 text-red-700',
 };
 
 export default function LoanDetail() {
@@ -192,6 +193,7 @@ export default function LoanDetail() {
                 <th className="px-4 py-3 text-left">Principal</th>
                 <th className="px-4 py-3 text-left">Interest</th>
                 <th className="px-4 py-3 text-left">Status</th>
+                <th className="px-4 py-3 text-left">Penalty</th>
                 <th className="px-4 py-3"></th>
               </tr>
             </thead>
@@ -208,8 +210,11 @@ export default function LoanDetail() {
                       {r.status.toUpperCase()}
                     </span>
                   </td>
+                  <td className="px-4 py-3 text-red-600 text-sm">
+                    {r.penalty_amount ? `₹${parseFloat(r.penalty_amount).toLocaleString('en-IN')}` : '—'}
+                  </td>
                   <td className="px-4 py-3">
-                    {r.status === 'pending' && (
+                    {(r.status === 'pending' || r.status === 'overdue') && (
                       <button
                         onClick={() => handleMarkPaid(r.id)}
                         disabled={actionLoading === `pay-${r.id}`}

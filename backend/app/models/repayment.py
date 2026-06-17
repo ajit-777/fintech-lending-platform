@@ -36,5 +36,6 @@ class RepaymentInstallment(Base):
 
     paid_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     paid_amount: Mapped[Optional[float]] = mapped_column(Numeric(12, 2), nullable=True)
+    penalty_amount: Mapped[Optional[float]] = mapped_column(Numeric(12, 2), nullable=True)
 
     loan = relationship("LoanApplication", back_populates="repayment_schedule")

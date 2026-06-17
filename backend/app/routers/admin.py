@@ -20,7 +20,7 @@ from app.schemas.loan_application import LoanApplicationResponse, LoanReviewRequ
 from app.schemas.notification import NotificationLogResponse
 from app.schemas.pricing_config import PricingConfigResponse, PricingConfigUpdate
 from app.schemas.repayment import RepaymentInstallmentResponse, RepaymentPaymentRequest
-from app.services import notifications, repayment_schedule
+from app.services import notifications, overdue, repayment_schedule
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -69,6 +69,8 @@ def mark_installment_paid(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Installment not found")
     if installment.status == "paid":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Installment is already marked as paid")
+    if installment.status not in ("pending", "overdue"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Cannot mark installment with status '{installment.status}' as paid")
 
     installment.status = "paid"
     installment.paid_at = datetime.now(timezone.utc)
@@ -261,6 +263,14 @@ def get_loan_notifications(
         .order_by(NotificationLog.sent_at.desc())
         .all()
     )
+
+
+# ── Overdue job ──────────────────────────────────────────────────────────────
+
+@router.post("/jobs/mark-overdue", status_code=status.HTTP_200_OK)
+def run_mark_overdue(admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    count = overdue.mark_overdue(db)
+    return {"marked_overdue": count}
 
 
 # ── Pricing config ────────────────────────────────────────────────────────────
