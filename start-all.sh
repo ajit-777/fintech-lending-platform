@@ -32,6 +32,14 @@ echo "    URL: http://localhost:5173"
 echo "==> Starting Flutter (target: $FLUTTER_TARGET)..."
 pkill -f "flutter run" 2>/dev/null || true
 cd "$ROOT/frontend"
+# Auto-detect running emulator if target is 'android'
+if [ "$FLUTTER_TARGET" = "android" ]; then
+  EMULATOR_ID=$(flutter devices 2>/dev/null | grep emulator | awk '{print $4}' | head -1)
+  if [ -n "$EMULATOR_ID" ]; then
+    FLUTTER_TARGET="$EMULATOR_ID"
+    echo "    Auto-detected emulator: $EMULATOR_ID"
+  fi
+fi
 nohup flutter run -d "$FLUTTER_TARGET" > logs/flutter.log 2>&1 &
 echo $! > flutter.pid
 echo "    PID $(cat flutter.pid) — logs/flutter.log"

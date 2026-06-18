@@ -18,6 +18,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   late Future<List<LoanApplication>> _loansFuture;
+  bool _kycVerified = false;
 
   @override
   void initState() {
@@ -29,11 +30,13 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _checkKYC() async {
     try {
       final kyc = await KYCService.getMyKYC();
-      if (kyc['kyc_status'] != 'verified' && mounted) {
+      if (!mounted) return;
+      if (kyc['kyc_status'] == 'verified') {
+        setState(() => _kycVerified = true);
+      } else {
         Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const KYCScreen()));
       }
     } on Exception {
-      // 404 means no KYC submitted yet
       if (mounted) {
         Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const KYCScreen()));
       }
@@ -113,7 +116,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () async {
+        onPressed: !_kycVerified ? null : () async {
           await Navigator.push(context, MaterialPageRoute(builder: (_) => const ApplyLoanScreen()));
           _refresh();
         },

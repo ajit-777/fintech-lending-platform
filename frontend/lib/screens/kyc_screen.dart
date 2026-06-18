@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import '../services/api_client.dart';
 import '../services/kyc_service.dart';
 import 'home_screen.dart';
+import 'login_screen.dart';
 
 class KYCScreen extends StatefulWidget {
   const KYCScreen({super.key});
@@ -38,6 +40,21 @@ class _KYCScreenState extends State<KYCScreen> {
     super.dispose();
   }
 
+  void _handleError(Exception e) {
+    if (e is ApiException && e.statusCode == 401) {
+      ApiClient.clearToken().then((_) {
+        if (mounted) {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const LoginScreen()),
+            (_) => false,
+          );
+        }
+      });
+      return;
+    }
+    setState(() => _error = e.toString());
+  }
+
   Future<void> _submitDetails() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() { _loading = true; _error = null; });
@@ -53,7 +70,7 @@ class _KYCScreenState extends State<KYCScreen> {
       );
       setState(() => _step = 1);
     } on Exception catch (e) {
-      setState(() => _error = e.toString());
+      _handleError(e);
     } finally {
       setState(() => _loading = false);
     }
@@ -65,7 +82,7 @@ class _KYCScreenState extends State<KYCScreen> {
       await KYCService.verifyPAN();
       setState(() => _step = 2);
     } on Exception catch (e) {
-      setState(() => _error = e.toString());
+      _handleError(e);
     } finally {
       setState(() => _loading = false);
     }
@@ -81,7 +98,7 @@ class _KYCScreenState extends State<KYCScreen> {
       final result = await KYCService.sendAadhaarOTP(_aadhaarCtrl.text.trim());
       setState(() => _aadhaarRefId = result['ref_id'] as String?);
     } on Exception catch (e) {
-      setState(() => _error = e.toString());
+      _handleError(e);
     } finally {
       setState(() => _loading = false);
     }
@@ -97,7 +114,7 @@ class _KYCScreenState extends State<KYCScreen> {
       await KYCService.verifyAadhaarOTP(otp: _otpCtrl.text.trim(), refId: _aadhaarRefId!);
       setState(() => _step = 3);
     } on Exception catch (e) {
-      setState(() => _error = e.toString());
+      _handleError(e);
     } finally {
       setState(() => _loading = false);
     }
@@ -106,7 +123,24 @@ class _KYCScreenState extends State<KYCScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('KYC Verification')),
+      appBar: AppBar(
+        title: const Text('KYC Verification'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout),
+            tooltip: 'Sign out',
+            onPressed: () async {
+              await ApiClient.clearToken();
+              if (mounted) {
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (_) => const LoginScreen()),
+                  (_) => false,
+                );
+              }
+            },
+          ),
+        ],
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(20),

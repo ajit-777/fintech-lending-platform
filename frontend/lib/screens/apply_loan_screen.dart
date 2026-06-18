@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/api_client.dart';
 import '../services/loan_service.dart';
+import 'kyc_screen.dart';
 
 class ApplyLoanScreen extends StatefulWidget {
   const ApplyLoanScreen({super.key});
@@ -42,6 +43,10 @@ class _ApplyLoanScreenState extends State<ApplyLoanScreen> {
         Navigator.pop(context);
       }
     } on ApiException catch (e) {
+      if (e.statusCode == 403 && e.message.contains('KYC') && mounted) {
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const KYCScreen()));
+        return;
+      }
       setState(() => _error = e.message);
     } catch (e) {
       setState(() => _error = 'Please check your inputs and try again.');
