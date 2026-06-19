@@ -22,7 +22,7 @@ from app.schemas.loan_application import LoanApplicationResponse, LoanReviewRequ
 from app.schemas.notification import NotificationLogResponse
 from app.schemas.pricing_config import PricingConfigResponse, PricingConfigUpdate
 from app.schemas.repayment import RepaymentInstallmentResponse, RepaymentPaymentRequest
-from app.services import notifications, overdue, repayment_schedule
+from app.services import notifications, overdue, penny_drop as penny_drop_svc, repayment_schedule
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -214,6 +214,11 @@ def disburse_loan(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only approved loans can be disbursed")
     if not loan.bank_account_number or not loan.ifsc_code:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Borrower has not provided bank account details")
+    if not loan.bank_account_verified and not loan.bank_account_override:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Bank account penny drop verification failed or name mismatch. Use the override endpoint to proceed manually.",
+        )
 
     gross_amount = float(loan.amount)
     net_amount = round(gross_amount - float(loan.processing_fee), 2)
@@ -236,6 +241,22 @@ def disburse_loan(
     notifications.notify_disbursement(db, loan.user, loan, disbursement)
 
     return disbursement
+
+
+@router.patch("/loans/{loan_id}/bank-account/override", response_model=LoanApplicationResponse)
+def override_bank_account_verification(
+    loan_id: uuid.UUID,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Allow admin to manually approve a bank account that failed penny drop name match."""
+    loan = db.query(LoanApplication).filter(LoanApplication.id == loan_id).first()
+    if not loan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Loan application not found")
+    loan.bank_account_override = True
+    db.commit()
+    db.refresh(loan)
+    return _enrich(loan, db)
 
 
 @router.get("/loans/{loan_id}/disbursement", response_model=DisbursementResponse)

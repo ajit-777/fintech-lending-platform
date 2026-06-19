@@ -83,6 +83,10 @@ class LoanApplication(Base):
 
     bank_account_number: Mapped[Optional[str]] = mapped_column(String(34), nullable=True)
     ifsc_code: Mapped[Optional[str]] = mapped_column(String(11), nullable=True)
+    bank_account_verified: Mapped[bool] = mapped_column(default=False, nullable=False)
+    bank_account_holder_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    penny_drop_name_match_score: Mapped[Optional[float]] = mapped_column(Numeric(4, 3), nullable=True)
+    bank_account_override: Mapped[bool] = mapped_column(default=False, nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

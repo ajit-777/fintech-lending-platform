@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   getLoan, approveLoan, rejectLoan, disburseLoan,
   getRepayments, markRepaymentPaid, getUserKYC, overrideKYCStatus,
+  overrideBankAccount,
 } from '../api/loans';
 
 const STATUS_COLORS = {
@@ -87,6 +88,18 @@ export default function LoanDetail() {
       await load();
     } catch (err) {
       setError(err.response?.data?.detail || 'Disburse failed');
+    } finally {
+      setActionLoading('');
+    }
+  }
+
+  async function handleBankOverride() {
+    setActionLoading('bank-override');
+    try {
+      const res = await overrideBankAccount(id);
+      setLoan(res.data);
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Override failed');
     } finally {
       setActionLoading('');
     }
@@ -177,6 +190,51 @@ export default function LoanDetail() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Penny drop card */}
+      <div className="bg-white rounded-xl shadow p-6 mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold text-gray-800">Bank Account Verification</h3>
+          <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+            loan.bank_account_verified
+              ? 'bg-green-100 text-green-700'
+              : loan.bank_account_override
+              ? 'bg-yellow-100 text-yellow-700'
+              : 'bg-red-100 text-red-700'
+          }`}>
+            {loan.bank_account_verified ? 'VERIFIED' : loan.bank_account_override ? 'OVERRIDDEN' : 'UNVERIFIED'}
+          </span>
+        </div>
+        <div className="grid grid-cols-2 gap-3 text-sm">
+          {[
+            ['Account Number', loan.bank_account_number || '—'],
+            ['IFSC Code', loan.ifsc_code || '—'],
+            ['Name from Bank', loan.bank_account_holder_name || '—'],
+            ['Name Match Score', loan.penny_drop_name_match_score != null
+              ? `${(loan.penny_drop_name_match_score * 100).toFixed(0)}%`
+              : '—'],
+          ].map(([label, value]) => (
+            <div key={label}>
+              <span className="text-gray-400 text-xs">{label}</span>
+              <p className="font-medium text-gray-700">{value}</p>
+            </div>
+          ))}
+        </div>
+        {!loan.bank_account_verified && !loan.bank_account_override && (
+          <div className="mt-4">
+            <p className="text-xs text-gray-400 mb-2">
+              Name mismatch between KYC and bank records. Review manually before overriding.
+            </p>
+            <button
+              onClick={handleBankOverride}
+              disabled={!!actionLoading}
+              className="bg-yellow-500 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-yellow-600 disabled:opacity-50"
+            >
+              {actionLoading === 'bank-override' ? 'Saving…' : 'Override & Allow Disbursal'}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* KYC card */}

@@ -17,6 +17,8 @@ class LoanApplication {
   final String? notes;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final bool? bankAccountVerified;
+  final String? bankAccountHolderName;
 
   LoanApplication({
     required this.id,
@@ -37,6 +39,8 @@ class LoanApplication {
     this.notes,
     required this.createdAt,
     required this.updatedAt,
+    this.bankAccountVerified,
+    this.bankAccountHolderName,
   });
 
   factory LoanApplication.fromJson(Map<String, dynamic> json) => LoanApplication(
@@ -58,5 +62,7 @@ class LoanApplication {
         notes: json['notes'],
         createdAt: DateTime.parse(json['created_at']),
         updatedAt: DateTime.parse(json['updated_at']),
+        bankAccountVerified: json['bank_account_verified'] as bool?,
+        bankAccountHolderName: json['bank_account_holder_name'] as String?,
       );
 }

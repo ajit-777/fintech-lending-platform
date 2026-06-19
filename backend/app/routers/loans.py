@@ -15,7 +15,7 @@ from app.routers.users import get_current_user
 from app.schemas.disbursement import DisbursementResponse
 from app.schemas.loan_application import LoanApplicationCreate, LoanApplicationResponse
 from app.schemas.repayment import RepaymentInstallmentResponse
-from app.services import loan_rules, notifications, repayment_schedule
+from app.services import loan_rules, notifications, penny_drop, repayment_schedule
 
 router = APIRouter(prefix="/loans", tags=["Loans"])
 
@@ -32,6 +32,22 @@ def create_loan_application(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="KYC verification is required before applying for a loan",
         )
+
+    # Run penny drop verification against the bank account
+    pd_provider = penny_drop.get_provider()
+    pd_result = pd_provider.verify(payload.bank_account_number, payload.ifsc_code)
+
+    if not pd_result.success:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Bank account verification failed: {pd_result.error or 'account inactive'}",
+        )
+
+    # Name match against PAN-verified name
+    kyc_name = kyc.pan_name or ""
+    bank_name = pd_result.account_holder_name or ""
+    match_score = penny_drop.name_match_score(kyc_name, bank_name) if kyc_name and bank_name else 0.0
+    account_verified = match_score >= 0.5
 
     result = loan_rules.evaluate(
         cibil_score=payload.cibil_score,
@@ -53,6 +69,9 @@ def create_loan_application(
         notes=payload.notes,
         bank_account_number=payload.bank_account_number,
         ifsc_code=payload.ifsc_code,
+        bank_account_verified=account_verified,
+        bank_account_holder_name=pd_result.account_holder_name,
+        penny_drop_name_match_score=round(match_score, 3),
         status=result.decision,
         rejection_reason=result.reason if result.decision != "approved" else None,
         reviewed_at=now if result.decision != "pending" else None,

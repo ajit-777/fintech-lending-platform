@@ -37,8 +37,14 @@ class _ApplyLoanScreenState extends State<ApplyLoanScreen> {
         ifscCode: _ifscController.text.trim().toUpperCase(),
       );
       if (mounted) {
+        final bankMsg = loan.bankAccountVerified == true
+            ? 'Bank account verified ✓'
+            : 'Bank account name mismatch — admin review required';
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Application submitted — status: ${loan.status.toUpperCase()}')),
+          SnackBar(
+            content: Text('Application submitted — ${loan.status.toUpperCase()}. $bankMsg'),
+            duration: const Duration(seconds: 4),
+          ),
         );
         Navigator.pop(context);
       }

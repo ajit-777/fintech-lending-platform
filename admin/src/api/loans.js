@@ -14,3 +14,4 @@ export const updatePricing = (id, data) => api.patch(`/admin/pricing/${id}`, dat
 
 export const getUserKYC = (userId) => api.get(`/admin/users/${userId}/kyc`);
 export const overrideKYCStatus = (userId, data) => api.patch(`/admin/users/${userId}/kyc/status`, data);
+export const overrideBankAccount = (loanId) => api.patch(`/admin/loans/${loanId}/bank-account/override`);

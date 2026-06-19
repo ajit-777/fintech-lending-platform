@@ -108,7 +108,7 @@ def _seed_verified_kyc(email: str) -> None:
                 user_id=user.id,
                 pan_number="ABCDE1234F",
                 pan_verified=True,
-                pan_name="TEST USER",
+                pan_name="MOCK ACCOUNT HOLDER",
                 aadhaar_last4="1234",
                 aadhaar_verified=True,
                 date_of_birth="1990-01-01",
