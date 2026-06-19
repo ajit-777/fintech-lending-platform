@@ -8,6 +8,7 @@ from app.db.database import engine
 import app.models
 
 from app.routers.admin import router as admin_router
+from app.routers.agreement import router as agreement_router
 from app.routers.auth import router as auth_router
 from app.routers.kyc import router as kyc_router
 from app.routers.loans import router as loans_router
@@ -58,6 +59,7 @@ app.include_router(auth_router)
 app.include_router(users_router)
 app.include_router(kyc_router)
 app.include_router(loans_router)
+app.include_router(agreement_router)
 app.include_router(admin_router)
 
 

@@ -1,6 +1,6 @@
 """Integration tests for admin loan lifecycle and access control."""
 import pytest
-from tests.conftest import LOAN_PAYLOAD, auth_headers, register, register_admin
+from tests.conftest import LOAN_PAYLOAD, accept_agreement, auth_headers, register, register_admin
 
 
 def _apply_loan(client, token, payload=None):
@@ -113,6 +113,7 @@ def test_admin_disburse_approved_loan(client):
     admin_token = register_admin(client)
 
     loan = _apply_loan(client, user_token)
+    accept_agreement(client, user_token, loan["id"])
     r = client.post(
         f"/admin/loans/{loan['id']}/disburse",
         json={"reference_number": "UTR123456789"},
@@ -130,6 +131,7 @@ def test_loan_status_becomes_disbursed_after_disbursal(client):
     admin_token = register_admin(client)
 
     loan = _apply_loan(client, user_token)
+    accept_agreement(client, user_token, loan["id"])
     client.post(
         f"/admin/loans/{loan['id']}/disburse",
         json={"reference_number": "UTR123456789"},
@@ -144,6 +146,7 @@ def test_cannot_disburse_twice(client):
     admin_token = register_admin(client)
 
     loan = _apply_loan(client, user_token)
+    accept_agreement(client, user_token, loan["id"])
     client.post(f"/admin/loans/{loan['id']}/disburse", json={"reference_number": "UTR1"}, headers=auth_headers(admin_token))
     r = client.post(f"/admin/loans/{loan['id']}/disburse", json={"reference_number": "UTR2"}, headers=auth_headers(admin_token))
     assert r.status_code == 409

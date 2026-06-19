@@ -219,6 +219,11 @@ def disburse_loan(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Bank account penny drop verification failed or name mismatch. Use the override endpoint to proceed manually.",
         )
+    if not loan.agreement_accepted:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Borrower has not accepted the loan agreement yet",
+        )
 
     gross_amount = float(loan.amount)
     net_amount = round(gross_amount - float(loan.processing_fee), 2)

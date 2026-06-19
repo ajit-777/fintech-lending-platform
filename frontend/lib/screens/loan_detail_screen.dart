@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../models/loan_application.dart';
 import '../models/repayment_installment.dart';
 import '../services/loan_service.dart';
+import 'agreement_screen.dart';
 
 class LoanDetailScreen extends StatefulWidget {
   final String loanId;
@@ -18,7 +19,11 @@ class _LoanDetailScreenState extends State<LoanDetailScreen> {
   @override
   void initState() {
     super.initState();
-    _loanFuture = LoanService.getLoan(widget.loanId);
+    _reload();
+  }
+
+  void _reload() {
+    setState(() => _loanFuture = LoanService.getLoan(widget.loanId));
   }
 
   @override
@@ -47,7 +52,46 @@ class _LoanDetailScreenState extends State<LoanDetailScreen> {
                 _infoRow('Interest Rate', '${loan.annualInterestRate}% p.a.'),
                 _infoRow('Processing Fee', '₹${loan.processingFee.toStringAsFixed(0)}'),
                 if (loan.rejectionReason != null) _infoRow('Reason', loan.rejectionReason!),
-                const SizedBox(height: 24),
+                _infoRow('Bank Account Verified', loan.bankAccountVerified == true ? '✓ Yes' : '✗ Pending review'),
+                _infoRow('Agreement', loan.agreementAccepted == true ? '✓ Accepted' : '— Pending'),
+                const SizedBox(height: 16),
+
+                // Agreement acceptance banner
+                if (loan.status == 'approved' && loan.agreementAccepted != true)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade50,
+                      border: Border.all(color: Colors.orange.shade300),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Action Required', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange.shade800)),
+                        const SizedBox(height: 4),
+                        const Text('Please accept the loan agreement before disbursement can proceed.', style: TextStyle(fontSize: 13)),
+                        const SizedBox(height: 10),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: () async {
+                              final accepted = await Navigator.push<bool>(
+                                context,
+                                MaterialPageRoute(builder: (_) => AgreementScreen(loanId: loan.id)),
+                              );
+                              if (accepted == true) _reload();
+                            },
+                            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange.shade700),
+                            child: const Text('Review & Accept Agreement', style: TextStyle(color: Colors.white)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
                 if (loan.status == 'approved') ...[
                   const Text('Repayment Schedule', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),

@@ -177,6 +177,9 @@ export default function LoanDetail() {
             ['Interest Rate', loan.annual_interest_rate ? `${loan.annual_interest_rate}% p.a.` : '—'],
             ['Processing Fee', loan.processing_fee ? `₹${loan.processing_fee?.toLocaleString('en-IN')}` : '—'],
             ['Applied On', new Date(loan.created_at).toLocaleDateString('en-IN')],
+            ['Agreement', loan.agreement_accepted
+              ? `✓ Accepted ${loan.agreement_accepted_at ? 'on ' + new Date(loan.agreement_accepted_at).toLocaleDateString('en-IN') : ''}`
+              : '— Pending'],
           ].map(([label, value]) => (
             <div key={label}>
               <span className="text-gray-400">{label}</span>

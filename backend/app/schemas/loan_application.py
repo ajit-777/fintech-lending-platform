@@ -45,6 +45,8 @@ class LoanApplicationResponse(BaseModel):
     updated_at: datetime
     bank_account_number: Optional[str] = None
     ifsc_code: Optional[str] = None
+    agreement_accepted: bool = False
+    agreement_accepted_at: Optional[datetime] = None
     bank_account_verified: bool = False
     bank_account_holder_name: Optional[str] = None
     penny_drop_name_match_score: Optional[float] = None

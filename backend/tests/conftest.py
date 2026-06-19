@@ -150,6 +150,19 @@ def auth_headers(token):
     return {"Authorization": f"Bearer {token}"}
 
 
+def accept_agreement(client, token, loan_id):
+    """Helper: send OTP then accept agreement for a loan."""
+    r = client.post(f"/loans/{loan_id}/agreement/send-otp", headers=auth_headers(token))
+    assert r.status_code == 200, r.text
+    ref_id = r.json()["ref_id"]
+    r = client.post(
+        f"/loans/{loan_id}/agreement/accept",
+        json={"otp": "123456", "ref_id": ref_id},
+        headers=auth_headers(token),
+    )
+    assert r.status_code == 200, r.text
+
+
 LOAN_PAYLOAD = {
     "amount": 100000,
     "tenure_months": 12,

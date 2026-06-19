@@ -1,6 +1,6 @@
 """Tests for penny drop verification and name matching."""
 import pytest
-from tests.conftest import LOAN_PAYLOAD, auth_headers, register, register_admin
+from tests.conftest import LOAN_PAYLOAD, accept_agreement, auth_headers, register, register_admin
 
 from app.services.penny_drop import MockPennyDropProvider, name_match_score
 
@@ -114,10 +114,13 @@ def test_admin_override_unblocks_disbursal(client):
     loan = client.post("/loans", json=payload, headers=auth_headers(user_token)).json()
     assert loan["bank_account_verified"] is False
 
-    # Admin overrides
+    # Admin overrides bank account
     r = client.patch(f"/admin/loans/{loan['id']}/bank-account/override", headers=auth_headers(admin_token))
     assert r.status_code == 200
     assert r.json()["bank_account_override"] is True
+
+    # Borrower accepts agreement
+    accept_agreement(client, user_token, loan["id"])
 
     # Now disbursal should succeed
     r = client.post(

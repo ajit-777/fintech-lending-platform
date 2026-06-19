@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -83,6 +83,10 @@ class LoanApplication(Base):
 
     bank_account_number: Mapped[Optional[str]] = mapped_column(String(34), nullable=True)
     ifsc_code: Mapped[Optional[str]] = mapped_column(String(11), nullable=True)
+    agreement_accepted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    agreement_accepted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    agreement_otp_ref: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
     bank_account_verified: Mapped[bool] = mapped_column(default=False, nullable=False)
     bank_account_holder_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     penny_drop_name_match_score: Mapped[Optional[float]] = mapped_column(Numeric(4, 3), nullable=True)
