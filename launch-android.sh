@@ -10,19 +10,13 @@ if ! command -v "$EMULATOR" &>/dev/null; then
   exit 1
 fi
 
-# Check if already running
 if pgrep -f "emulator.*$AVD" > /dev/null; then
   echo "Android emulator '$AVD' is already running."
   exit 0
 fi
 
-echo "==> Launching Android emulator: $AVD"
+echo "==> Launching Android emulator: $AVD (background)"
 nohup "$EMULATOR" -avd "$AVD" -no-snapshot-save > /tmp/android-emulator.log 2>&1 &
-echo "    PID $! — logs: /tmp/android-emulator.log"
-echo "    Waiting for device to boot..."
-
-# Wait until the device is online
-until adb shell getprop sys.boot_completed 2>/dev/null | grep -q "1"; do
-  sleep 3
-done
-echo "    Device ready: $(adb devices | grep emulator)"
+EMULATOR_PID=$!
+echo "    PID $EMULATOR_PID — logs: /tmp/android-emulator.log"
+echo "    Emulator booting in the background. Run: adb devices to check when ready."

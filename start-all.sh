@@ -34,7 +34,7 @@ pkill -f "flutter run" 2>/dev/null || true
 cd "$ROOT/frontend"
 # Auto-detect running emulator if target is 'android'
 if [ "$FLUTTER_TARGET" = "android" ]; then
-  EMULATOR_ID=$(flutter devices 2>/dev/null | grep emulator | awk '{print $4}' | head -1)
+  EMULATOR_ID=$(adb devices 2>/dev/null | grep "emulator.*device$" | awk '{print $1}' | head -1)
   if [ -n "$EMULATOR_ID" ]; then
     FLUTTER_TARGET="$EMULATOR_ID"
     echo "    Auto-detected emulator: $EMULATOR_ID"
