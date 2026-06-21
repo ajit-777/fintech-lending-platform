@@ -3,6 +3,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import LoanDetail from './pages/LoanDetail';
 import Pricing from './pages/Pricing';
+import Users from './pages/Users';
 import Layout from './components/Layout';
 
 function PrivateRoute({ children }) {
@@ -35,6 +36,14 @@ export default function App() {
           element={
             <PrivateRoute>
               <Layout><Pricing /></Layout>
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/users"
+          element={
+            <PrivateRoute>
+              <Layout><Users /></Layout>
             </PrivateRoute>
           }
         />

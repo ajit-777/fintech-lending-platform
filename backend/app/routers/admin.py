@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
@@ -22,30 +22,40 @@ from app.schemas.loan_application import LoanApplicationResponse, LoanReviewRequ
 from app.schemas.notification import NotificationLogResponse
 from app.schemas.pricing_config import PricingConfigResponse, PricingConfigUpdate
 from app.schemas.repayment import RepaymentInstallmentResponse, RepaymentPaymentRequest
+from app.schemas.user import UserResponse
 from app.services import notifications, overdue, penny_drop as penny_drop_svc, repayment_schedule
+from app.core.security import hash_password
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
+
+STAFF_ROLES = {"admin", "superuser"}
 
 
 def require_admin(current_user: User = Depends(get_current_user)) -> User:
     if current_user.role != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required",
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
     return current_user
 
+
+def require_support(current_user: User = Depends(get_current_user)) -> User:
+    """Allow admin and superuser (customer support) roles."""
+    if current_user.role not in STAFF_ROLES:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Staff access required")
+    return current_user
+
+
+# ── Repayments ────────────────────────────────────────────────────────────────
 
 @router.get("/loans/{loan_id}/repayments", response_model=List[RepaymentInstallmentResponse])
 def get_repayment_schedule(
     loan_id: uuid.UUID,
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_support),
     db: Session = Depends(get_db),
 ):
     loan = db.query(LoanApplication).filter(LoanApplication.id == loan_id).first()
     if not loan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Loan application not found")
-    if loan.status not in ("approved", "disbursed"):
+    if loan.status not in ("approved", "disbursed", "closed"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Repayment schedule is only available for approved or disbursed loans")
     return db.query(RepaymentInstallment).filter(RepaymentInstallment.loan_id == loan_id).order_by(RepaymentInstallment.installment_number).all()
 
@@ -81,7 +91,6 @@ def mark_installment_paid(
     db.refresh(installment)
 
     notifications.notify_payment_received(db, loan.user, loan, installment)
-
     return installment
 
 
@@ -94,11 +103,13 @@ def _enrich(loan: LoanApplication, db: Session) -> LoanApplicationResponse:
     return data
 
 
+# ── Loans ─────────────────────────────────────────────────────────────────────
+
 @router.get("/loans", response_model=List[LoanApplicationResponse])
 def list_all_loans(
-    loan_status: Optional[str] = Query(None, alias="status", pattern="^(pending|approved|rejected|disbursed)$"),
+    loan_status: Optional[str] = Query(None, alias="status", pattern="^(pending|approved|rejected|disbursed|closed)$"),
     identifier: Optional[str] = Query(None, description="Filter by applicant's email or phone number"),
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_support),
     db: Session = Depends(get_db),
 ):
     query = db.query(LoanApplication)
@@ -115,7 +126,7 @@ def list_all_loans(
 @router.get("/loans/{loan_id}", response_model=LoanApplicationResponse)
 def get_loan(
     loan_id: uuid.UUID,
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_support),
     db: Session = Depends(get_db),
 ):
     loan = db.query(LoanApplication).filter(LoanApplication.id == loan_id).first()
@@ -135,10 +146,7 @@ def approve_loan(
     if not loan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Loan application not found")
     if loan.status != "pending":
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Loan is already {loan.status} and cannot be reviewed again",
-        )
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Loan is already {loan.status} and cannot be reviewed again")
 
     loan.status = "approved"
     loan.rejection_reason = None
@@ -159,7 +167,6 @@ def approve_loan(
     db.commit()
 
     notifications.notify_loan_decision(db, loan.user, loan)
-
     return _enrich(loan, db)
 
 
@@ -174,10 +181,7 @@ def reject_loan(
     if not loan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Loan application not found")
     if loan.status != "pending":
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Loan is already {loan.status} and cannot be reviewed again",
-        )
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Loan is already {loan.status} and cannot be reviewed again")
 
     loan.status = "rejected"
     loan.rejection_reason = payload.reason
@@ -187,7 +191,6 @@ def reject_loan(
     db.refresh(loan)
 
     notifications.notify_loan_decision(db, loan.user, loan)
-
     return _enrich(loan, db)
 
 
@@ -215,15 +218,9 @@ def disburse_loan(
     if not loan.bank_account_number or not loan.ifsc_code:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Borrower has not provided bank account details")
     if not loan.bank_account_verified and not loan.bank_account_override:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Bank account penny drop verification failed or name mismatch. Use the override endpoint to proceed manually.",
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Bank account penny drop verification failed or name mismatch. Use the override endpoint to proceed manually.")
     if not loan.agreement_accepted:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Borrower has not accepted the loan agreement yet",
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Borrower has not accepted the loan agreement yet")
 
     gross_amount = float(loan.amount)
     net_amount = round(gross_amount - float(loan.processing_fee), 2)
@@ -244,7 +241,6 @@ def disburse_loan(
     db.refresh(disbursement)
 
     notifications.notify_disbursement(db, loan.user, loan, disbursement)
-
     return disbursement
 
 
@@ -254,7 +250,6 @@ def override_bank_account_verification(
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    """Allow admin to manually approve a bank account that failed penny drop name match."""
     loan = db.query(LoanApplication).filter(LoanApplication.id == loan_id).first()
     if not loan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Loan application not found")
@@ -267,7 +262,7 @@ def override_bank_account_verification(
 @router.get("/loans/{loan_id}/disbursement", response_model=DisbursementResponse)
 def get_disbursement_admin(
     loan_id: uuid.UUID,
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_support),
     db: Session = Depends(get_db),
 ):
     disbursement = db.query(Disbursement).filter(Disbursement.loan_id == loan_id).first()
@@ -281,7 +276,7 @@ def get_disbursement_admin(
 @router.get("/loans/{loan_id}/notifications", response_model=List[NotificationLogResponse])
 def get_loan_notifications(
     loan_id: uuid.UUID,
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_support),
     db: Session = Depends(get_db),
 ):
     return (
@@ -300,12 +295,12 @@ def run_mark_overdue(admin: User = Depends(require_admin), db: Session = Depends
     return {"marked_overdue": count}
 
 
-# ── KYC admin ────────────────────────────────────────────────────────────────
+# ── KYC ──────────────────────────────────────────────────────────────────────
 
 @router.get("/users/{user_id}/kyc", response_model=KYCProfileResponse)
 def get_user_kyc(
     user_id: uuid.UUID,
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_support),
     db: Session = Depends(get_db),
 ):
     profile = db.query(KYCProfile).filter(KYCProfile.user_id == user_id).first()
@@ -335,7 +330,7 @@ def override_kyc_status(
     return profile
 
 
-# ── Pricing config ────────────────────────────────────────────────────────────
+# ── Pricing ───────────────────────────────────────────────────────────────────
 
 @router.get("/pricing", response_model=List[PricingConfigResponse])
 def list_pricing(admin: User = Depends(require_admin), db: Session = Depends(get_db)):
@@ -361,3 +356,94 @@ def update_pricing(
     db.commit()
     db.refresh(config)
     return config
+
+
+# ── User management ───────────────────────────────────────────────────────────
+
+class StaffUserCreate(BaseModel):
+    email: EmailStr
+    phone: str = Field(..., pattern=r"^\+91[0-9]{10}$")
+    password: str = Field(..., min_length=8)
+    role: str = Field("superuser", pattern="^(admin|superuser)$")
+
+
+class StaffRoleUpdate(BaseModel):
+    role: str = Field(..., pattern="^(admin|superuser)$")
+
+
+class StaffUserResponse(BaseModel):
+    model_config = {"from_attributes": True}
+
+    id: uuid.UUID
+    email: str
+    phone: str
+    role: str
+
+
+@router.get("/users", response_model=List[StaffUserResponse])
+def list_staff_users(
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """List all admin and superuser accounts."""
+    return db.query(User).filter(User.role.in_(["admin", "superuser"])).order_by(User.role, User.email).all()
+
+
+@router.post("/users", response_model=StaffUserResponse, status_code=status.HTTP_201_CREATED)
+def create_staff_user(
+    payload: StaffUserCreate,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    if db.query(User).filter(User.email == payload.email).first():
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
+    if db.query(User).filter(User.phone == payload.phone).first():
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Phone already registered")
+
+    user = User(
+        email=payload.email,
+        phone=payload.phone,
+        password_hash=hash_password(payload.password),
+        role=payload.role,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@router.patch("/users/{user_id}/role", response_model=StaffUserResponse)
+def update_staff_role(
+    user_id: uuid.UUID,
+    payload: StaffRoleUpdate,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    if user.role not in STAFF_ROLES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Can only change role of staff users")
+    if user.id == admin.id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot change your own role")
+    user.role = payload.role
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_staff_user(
+    user_id: uuid.UUID,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    if user.role not in STAFF_ROLES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Can only delete staff users")
+    if user.id == admin.id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete your own account")
+    db.delete(user)
+    db.commit()

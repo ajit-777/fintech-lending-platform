@@ -23,6 +23,7 @@ export default function Layout({ children }) {
         <nav className="flex-1 space-y-1">
           <NavLink to="/" end className={navClass}>Dashboard</NavLink>
           <NavLink to="/pricing" className={navClass}>Pricing Config</NavLink>
+          <NavLink to="/users" className={navClass}>Staff Users</NavLink>
         </nav>
         <button
           onClick={logout}
