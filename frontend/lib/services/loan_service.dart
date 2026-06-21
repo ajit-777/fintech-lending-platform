@@ -45,4 +45,14 @@ class LoanService {
     final response = await ApiClient.post('/loans/$loanId/repayments/$installmentId/pay', {});
     return RepaymentInstallment.fromJson(response);
   }
+
+  static Future<Map<String, dynamic>> getForeclosureQuote(String loanId) async {
+    final response = await ApiClient.get('/loans/$loanId/foreclosure-quote');
+    return Map<String, dynamic>.from(response);
+  }
+
+  static Future<Map<String, dynamic>> forecloseLoan(String loanId) async {
+    final response = await ApiClient.post('/loans/$loanId/foreclose', {});
+    return Map<String, dynamic>.from(response);
+  }
 }

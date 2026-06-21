@@ -127,8 +127,8 @@ def get_repayment_schedule(
     )
     if not loan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Loan application not found")
-    if loan.status not in ("approved", "disbursed"):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Repayment schedule is only available for approved or disbursed loans")
+    if loan.status not in ("approved", "disbursed", "closed"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Repayment schedule is only available for approved, disbursed, or closed loans")
     return db.query(RepaymentInstallment).filter(RepaymentInstallment.loan_id == loan_id).order_by(RepaymentInstallment.installment_number).all()
 
 
@@ -186,6 +186,113 @@ def pay_installment(
     notifications.notify_payment_received(db, current_user, loan, installment)
 
     return installment
+
+
+@router.get("/{loan_id}/foreclosure-quote")
+def get_foreclosure_quote(
+    loan_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    loan = (
+        db.query(LoanApplication)
+        .filter(LoanApplication.id == loan_id, LoanApplication.user_id == current_user.id)
+        .first()
+    )
+    if not loan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Loan not found")
+    if loan.status != "disbursed":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Foreclosure is only available for disbursed loans")
+
+    unpaid = (
+        db.query(RepaymentInstallment)
+        .filter(RepaymentInstallment.loan_id == loan_id, RepaymentInstallment.status != "paid")
+        .order_by(RepaymentInstallment.installment_number)
+        .all()
+    )
+    if not unpaid:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No outstanding installments")
+
+    # Outstanding principal = balance after the last paid installment
+    # = outstanding_principal on the earliest unpaid installment
+    outstanding_principal = float(unpaid[0].outstanding_principal) + float(unpaid[0].principal)
+    # More precisely: sum of principal portions remaining
+    outstanding_principal = sum(float(i.principal) for i in unpaid)
+    closure_fee = round(outstanding_principal * float(loan.early_closure_fee_pct) / 100, 2)
+    total_payable = round(outstanding_principal + closure_fee, 2)
+
+    return {
+        "outstanding_principal": round(outstanding_principal, 2),
+        "early_closure_fee_pct": float(loan.early_closure_fee_pct),
+        "closure_fee": closure_fee,
+        "total_payable": total_payable,
+        "installments_remaining": len(unpaid),
+    }
+
+
+@router.post("/{loan_id}/foreclose", status_code=status.HTTP_200_OK)
+def foreclose_loan(
+    loan_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    loan = (
+        db.query(LoanApplication)
+        .filter(LoanApplication.id == loan_id, LoanApplication.user_id == current_user.id)
+        .first()
+    )
+    if not loan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Loan not found")
+    if loan.status != "disbursed":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Foreclosure is only available for disbursed loans")
+
+    unpaid = (
+        db.query(RepaymentInstallment)
+        .filter(RepaymentInstallment.loan_id == loan_id, RepaymentInstallment.status != "paid")
+        .all()
+    )
+    if not unpaid:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No outstanding installments")
+
+    outstanding_principal = sum(float(i.principal) for i in unpaid)
+    closure_fee = round(outstanding_principal * float(loan.early_closure_fee_pct) / 100, 2)
+    total_payable = round(outstanding_principal + closure_fee, 2)
+
+    now = datetime.now(timezone.utc)
+    for installment in unpaid:
+        installment.status = "paid"
+        installment.paid_at = now
+        # Borrower pays principal only (interest waived on prepayment) + fee absorbed at loan level
+        installment.paid_amount = float(installment.principal)
+
+    loan.status = "closed"
+    loan.notes = (loan.notes or "") + f" | Foreclosed on {now.date()} — fee: ₹{closure_fee}"
+    db.commit()
+
+    notifications.send(
+        db=db,
+        user_id=current_user.id,
+        loan_id=loan.id,
+        channel="email",
+        event_type="loan_foreclosed",
+        recipient=current_user.email,
+        subject="Loan foreclosure confirmed",
+        body=(
+            f"Your loan of ₹{loan.amount} has been foreclosed. "
+            f"Outstanding principal: ₹{outstanding_principal:.2f}, "
+            f"early closure fee: ₹{closure_fee:.2f}, "
+            f"total paid: ₹{total_payable:.2f}."
+        ),
+        push_title="Loan Foreclosed ✓",
+        push_data={"loan_id": str(loan.id), "event": "loan_foreclosed"},
+    )
+
+    return {
+        "status": "closed",
+        "outstanding_principal": round(outstanding_principal, 2),
+        "closure_fee": closure_fee,
+        "total_payable": total_payable,
+    }
 
 
 @router.get("/{loan_id}/disbursement", response_model=DisbursementResponse)

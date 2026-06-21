@@ -93,6 +93,20 @@ class _LoanDetailScreenState extends State<LoanDetailScreen> {
                     ),
                   ),
 
+                if (loan.status == 'disbursed') ...[
+                  const SizedBox(height: 4),
+                  OutlinedButton.icon(
+                    onPressed: () => _showForeclosureFlow(loan.id),
+                    icon: const Icon(Icons.lock_outline, size: 18),
+                    label: const Text('Foreclose Loan'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.red.shade700,
+                      side: BorderSide(color: Colors.red.shade300),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+
                 if (loan.status == 'approved' || loan.status == 'disbursed' || loan.status == 'closed') ...[
                   const Text('Repayment Schedule', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
@@ -222,6 +236,84 @@ class _LoanDetailScreenState extends State<LoanDetailScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Payment failed: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  Future<void> _showForeclosureFlow(String loanId) async {
+    // Step 1: fetch quote
+    Map<String, dynamic>? quote;
+    try {
+      quote = await LoanService.getForeclosureQuote(loanId);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not fetch foreclosure quote: $e'), backgroundColor: Colors.red),
+      );
+      return;
+    }
+
+    if (!mounted) return;
+
+    // Step 2: show quote and confirm
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Foreclose Loan'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'You are about to pay off your entire outstanding loan balance early.',
+              style: TextStyle(fontSize: 13, color: Colors.grey),
+            ),
+            const SizedBox(height: 16),
+            _dialogRow('Installments Remaining', '${quote!['installments_remaining']}'),
+            _dialogRow('Outstanding Principal', '₹${(quote['outstanding_principal'] as num).toStringAsFixed(2)}'),
+            _dialogRow('Early Closure Fee (${quote['early_closure_fee_pct']}%)', '₹${(quote['closure_fee'] as num).toStringAsFixed(2)}'),
+            const Divider(height: 20),
+            _dialogRow('Total Payable', '₹${(quote['total_payable'] as num).toStringAsFixed(2)}'),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.orange.shade200),
+              ),
+              child: const Text(
+                'This action cannot be undone. All remaining installments will be marked as settled.',
+                style: TextStyle(fontSize: 12),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade700),
+            child: const Text('Confirm Foreclosure', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    // Step 3: execute
+    try {
+      await LoanService.forecloseLoan(loanId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Loan foreclosed successfully'), backgroundColor: Colors.green),
+      );
+      _reload();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Foreclosure failed: $e'), backgroundColor: Colors.red),
       );
     }
   }

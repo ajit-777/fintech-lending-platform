@@ -164,3 +164,72 @@ def test_loan_auto_closes_when_all_installments_paid(client):
 
     loan_data = client.get(f"/loans/{loan['id']}", headers=auth_headers(token)).json()
     assert loan_data["status"] == "closed"
+
+
+# ── Foreclosure tests ──────────────────────────────────────────────────────────
+
+def test_foreclosure_quote(client):
+    token = register(client, email="fc1@test.com", phone="+919000000201")
+    loan = client.post("/loans", json=LOAN_PAYLOAD, headers=auth_headers(token)).json()
+    accept_agreement(client, token, loan["id"])
+    _disburse_loan(client, loan["id"])
+
+    r = client.get(f"/loans/{loan['id']}/foreclosure-quote", headers=auth_headers(token))
+    assert r.status_code == 200
+    data = r.json()
+    assert data["outstanding_principal"] > 0
+    assert data["closure_fee"] >= 0
+    assert data["total_payable"] == round(data["outstanding_principal"] + data["closure_fee"], 2)
+    assert data["installments_remaining"] == 12
+
+
+def test_foreclosure_quote_not_available_before_disbursal(client):
+    token = register(client, email="fc2@test.com", phone="+919000000202")
+    loan = client.post("/loans", json=LOAN_PAYLOAD, headers=auth_headers(token)).json()
+    r = client.get(f"/loans/{loan['id']}/foreclosure-quote", headers=auth_headers(token))
+    assert r.status_code == 400
+
+
+def test_foreclose_loan(client):
+    token = register(client, email="fc3@test.com", phone="+919000000203")
+    loan = client.post("/loans", json=LOAN_PAYLOAD, headers=auth_headers(token)).json()
+    accept_agreement(client, token, loan["id"])
+    _disburse_loan(client, loan["id"])
+
+    r = client.post(f"/loans/{loan['id']}/foreclose", headers=auth_headers(token))
+    assert r.status_code == 200
+    data = r.json()
+    assert data["status"] == "closed"
+    assert data["total_payable"] > 0
+
+    loan_data = client.get(f"/loans/{loan['id']}", headers=auth_headers(token)).json()
+    assert loan_data["status"] == "closed"
+
+    installments = client.get(f"/loans/{loan['id']}/repayments", headers=auth_headers(token)).json()
+    assert all(i["status"] == "paid" for i in installments)
+
+
+def test_foreclose_already_closed(client):
+    token = register(client, email="fc4@test.com", phone="+919000000204")
+    loan = client.post("/loans", json=LOAN_PAYLOAD, headers=auth_headers(token)).json()
+    accept_agreement(client, token, loan["id"])
+    _disburse_loan(client, loan["id"])
+    client.post(f"/loans/{loan['id']}/foreclose", headers=auth_headers(token))
+    r = client.post(f"/loans/{loan['id']}/foreclose", headers=auth_headers(token))
+    assert r.status_code == 400
+
+
+def test_foreclose_reduces_installments_remaining(client):
+    token = register(client, email="fc5@test.com", phone="+919000000205")
+    loan = client.post("/loans", json=LOAN_PAYLOAD, headers=auth_headers(token)).json()
+    accept_agreement(client, token, loan["id"])
+    _disburse_loan(client, loan["id"])
+
+    # Pay first 2 installments
+    installments = client.get(f"/loans/{loan['id']}/repayments", headers=auth_headers(token)).json()
+    for i in installments[:2]:
+        client.post(f"/loans/{loan['id']}/repayments/{i['id']}/pay", json={}, headers=auth_headers(token))
+
+    # Quote should show 10 remaining
+    quote = client.get(f"/loans/{loan['id']}/foreclosure-quote", headers=auth_headers(token)).json()
+    assert quote["installments_remaining"] == 10
