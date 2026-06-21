@@ -182,6 +182,9 @@ def pay_installment(
 
     db.commit()
     db.refresh(installment)
+
+    notifications.notify_payment_received(db, current_user, loan, installment)
+
     return installment
 
 

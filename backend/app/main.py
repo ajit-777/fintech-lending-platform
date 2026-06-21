@@ -17,11 +17,41 @@ from app.routers.auth import router as auth_router
 from app.routers.kyc import router as kyc_router
 from app.routers.loans import router as loans_router
 from app.routers.users import router as users_router
-from app.services import overdue
+from app.services import notifications, overdue
 
 logger = logging.getLogger(__name__)
 
 Base.metadata.create_all(bind=engine)
+
+
+def _run_emi_reminders():
+    from datetime import date, timedelta
+    from app.models.loan_application import LoanApplication
+    from app.models.repayment import RepaymentInstallment
+    from app.models.user import User as UserModel
+    db = SessionLocal()
+    try:
+        tomorrow = date.today() + timedelta(days=1)
+        due_tomorrow = (
+            db.query(RepaymentInstallment)
+            .join(LoanApplication, RepaymentInstallment.loan_id == LoanApplication.id)
+            .filter(
+                RepaymentInstallment.status == "pending",
+                RepaymentInstallment.due_date == tomorrow,
+            )
+            .all()
+        )
+        for installment in due_tomorrow:
+            loan = installment.loan
+            user = db.query(UserModel).filter(UserModel.id == loan.user_id).first()
+            if user:
+                notifications.notify_emi_due_reminder(db, user, loan, installment)
+        if due_tomorrow:
+            logger.info("EMI reminder job: sent %d reminder(s) for %s", len(due_tomorrow), tomorrow)
+    except Exception:
+        logger.exception("EMI reminder job failed")
+    finally:
+        db.close()
 
 
 def _run_mark_overdue():
@@ -43,8 +73,9 @@ async def lifespan(app: FastAPI):
     scheduler = BackgroundScheduler()
     # Run daily at 00:30 IST (19:00 UTC previous day) — after midnight so all due dates have passed
     scheduler.add_job(_run_mark_overdue, "cron", hour=19, minute=0, timezone="UTC", id="mark_overdue")
+    scheduler.add_job(_run_emi_reminders, "cron", hour=3, minute=30, timezone="UTC", id="emi_reminders")
     scheduler.start()
-    logger.info("Scheduler started — overdue job runs daily at 00:30 IST")
+    logger.info("Scheduler started — overdue job 00:30 IST, EMI reminders 09:00 IST")
 
     # Run once at startup to catch any installments missed while server was down
     _run_mark_overdue()

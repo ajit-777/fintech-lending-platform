@@ -1,13 +1,23 @@
 import uuid as _uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.security import decode_access_token, verify_password
 from app.db.dependencies import get_db
+from app.models.device_token import DeviceToken
+from app.models.notification import NotificationLog
 from app.models.user import User
+from app.schemas.notification import NotificationLogResponse
 from app.schemas.user import UserResponse, UserUpdate
+
+
+class DeviceTokenRequest(BaseModel):
+    token: str
+    platform: str = "android"
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
@@ -77,3 +87,39 @@ def update_me(
     db.commit()
     db.refresh(current_user)
     return current_user
+
+
+@router.post("/me/device-token", status_code=status.HTTP_204_NO_CONTENT)
+def register_device_token(
+    payload: DeviceTokenRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Upsert FCM device token for the current user."""
+    existing = db.query(DeviceToken).filter(DeviceToken.user_id == current_user.id).first()
+    if existing:
+        existing.token = payload.token
+        existing.platform = payload.platform
+        existing.updated_at = datetime.now(timezone.utc)
+    else:
+        db.add(DeviceToken(
+            user_id=current_user.id,
+            token=payload.token,
+            platform=payload.platform,
+            updated_at=datetime.now(timezone.utc),
+        ))
+    db.commit()
+
+
+@router.get("/me/notifications", response_model=list[NotificationLogResponse])
+def get_my_notifications(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return (
+        db.query(NotificationLog)
+        .filter(NotificationLog.user_id == current_user.id)
+        .order_by(NotificationLog.sent_at.desc())
+        .limit(20)
+        .all()
+    )

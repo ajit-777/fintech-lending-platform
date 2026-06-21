@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_client.dart';
+import '../services/notification_service.dart';
 import 'register_screen.dart';
 import 'home_screen.dart';
 
@@ -22,6 +23,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final auth = context.read<AuthProvider>();
     try {
       await auth.login(identifier: _identifierController.text.trim(), password: _passwordController.text);
+      NotificationService.registerToken(); // fire-and-forget
       if (mounted) {
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomeScreen()));
       }
