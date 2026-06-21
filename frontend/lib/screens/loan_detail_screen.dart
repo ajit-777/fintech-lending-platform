@@ -23,7 +23,8 @@ class _LoanDetailScreenState extends State<LoanDetailScreen> {
   }
 
   void _reload() {
-    setState(() => _loanFuture = LoanService.getLoan(widget.loanId));
+    final future = LoanService.getLoan(widget.loanId);
+    setState(() { _loanFuture = future; });
   }
 
   @override
@@ -92,7 +93,7 @@ class _LoanDetailScreenState extends State<LoanDetailScreen> {
                     ),
                   ),
 
-                if (loan.status == 'approved') ...[
+                if (loan.status == 'approved' || loan.status == 'disbursed' || loan.status == 'closed') ...[
                   const Text('Repayment Schedule', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
                   FutureBuilder<List<RepaymentInstallment>>(
@@ -106,19 +107,7 @@ class _LoanDetailScreenState extends State<LoanDetailScreen> {
                       }
                       final installments = schedSnapshot.data ?? [];
                       return Column(
-                        children: installments.map((i) {
-                          final dueDateStr = DateFormat('dd MMM yyyy').format(i.dueDate);
-                          return Card(
-                            child: ListTile(
-                              title: Text('Installment #${i.installmentNumber} — ₹${i.emiAmount.toStringAsFixed(0)}'),
-                              subtitle: Text('Due: $dueDateStr  •  Principal: ₹${i.principal.toStringAsFixed(0)}  •  Interest: ₹${i.interest.toStringAsFixed(0)}'),
-                              trailing: Chip(
-                                label: Text(i.status.toUpperCase()),
-                                backgroundColor: i.status == 'paid' ? Colors.green.withValues(alpha: 0.15) : Colors.grey.withValues(alpha: 0.15),
-                              ),
-                            ),
-                          );
-                        }).toList(),
+                        children: installments.map((i) => _installmentCard(i, loan.id, loan.status)).toList(),
                       );
                     },
                   ),
@@ -130,6 +119,123 @@ class _LoanDetailScreenState extends State<LoanDetailScreen> {
       ),
     );
   }
+
+  Widget _installmentCard(RepaymentInstallment i, String loanId, String loanStatus) {
+    final dueDateStr = DateFormat('dd MMM yyyy').format(i.dueDate);
+    final isPaid = i.status == 'paid';
+    final isOverdue = i.status == 'overdue';
+    final canPay = loanStatus == 'disbursed' && !isPaid;
+    final totalDue = i.emiAmount + (i.penaltyAmount ?? 0);
+
+    Color statusColor = isPaid ? Colors.green : (isOverdue ? Colors.red : Colors.orange);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'EMI #${i.installmentNumber} — ₹${i.emiAmount.toStringAsFixed(0)}',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Due: $dueDateStr  •  P: ₹${i.principal.toStringAsFixed(0)}  I: ₹${i.interest.toStringAsFixed(0)}',
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                  if ((i.penaltyAmount ?? 0) > 0)
+                    Text(
+                      'Penalty: ₹${(i.penaltyAmount ?? 0).toStringAsFixed(0)}  •  Total: ₹${totalDue.toStringAsFixed(0)}',
+                      style: TextStyle(fontSize: 12, color: Colors.red.shade700),
+                    ),
+                  if (isPaid && i.paidAt != null)
+                    Text(
+                      'Paid on ${DateFormat('dd MMM yyyy').format(i.paidAt!)}',
+                      style: TextStyle(fontSize: 12, color: Colors.green.shade700),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            if (canPay)
+              ElevatedButton(
+                onPressed: () => _confirmPayment(loanId, i, totalDue),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: isOverdue ? Colors.red : Colors.green,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                ),
+                child: const Text('Pay', style: TextStyle(color: Colors.white)),
+              )
+            else
+              Chip(
+                label: Text(i.status.toUpperCase(), style: const TextStyle(fontSize: 11)),
+                backgroundColor: statusColor.withValues(alpha: 0.15),
+                labelStyle: TextStyle(color: statusColor),
+                padding: EdgeInsets.zero,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmPayment(String loanId, RepaymentInstallment installment, double totalDue) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text('Pay EMI #${installment.installmentNumber}'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _dialogRow('EMI Amount', '₹${installment.emiAmount.toStringAsFixed(2)}'),
+            if ((installment.penaltyAmount ?? 0) > 0)
+              _dialogRow('Late Penalty', '₹${(installment.penaltyAmount ?? 0).toStringAsFixed(2)}'),
+            const Divider(),
+            _dialogRow('Total Payable', '₹${totalDue.toStringAsFixed(2)}'),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Confirm Payment')),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await LoanService.payInstallment(loanId, installment.id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('EMI #${installment.installmentNumber} paid successfully'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      _reload();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Payment failed: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  Widget _dialogRow(String label, String value) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(label, style: const TextStyle(color: Colors.grey)),
+            Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
+          ],
+        ),
+      );
 
   Widget _infoRow(String label, String value) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),

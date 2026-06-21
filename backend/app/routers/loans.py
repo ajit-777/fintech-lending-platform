@@ -14,7 +14,7 @@ from app.models.user import User
 from app.routers.users import get_current_user
 from app.schemas.disbursement import DisbursementResponse
 from app.schemas.loan_application import LoanApplicationCreate, LoanApplicationResponse
-from app.schemas.repayment import RepaymentInstallmentResponse
+from app.schemas.repayment import RepaymentInstallmentResponse, RepaymentPaymentRequest
 from app.services import loan_rules, notifications, penny_drop, repayment_schedule
 
 router = APIRouter(prefix="/loans", tags=["Loans"])
@@ -130,6 +130,59 @@ def get_repayment_schedule(
     if loan.status not in ("approved", "disbursed"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Repayment schedule is only available for approved or disbursed loans")
     return db.query(RepaymentInstallment).filter(RepaymentInstallment.loan_id == loan_id).order_by(RepaymentInstallment.installment_number).all()
+
+
+@router.post("/{loan_id}/repayments/{installment_id}/pay", response_model=RepaymentInstallmentResponse)
+def pay_installment(
+    loan_id: uuid.UUID,
+    installment_id: uuid.UUID,
+    payload: RepaymentPaymentRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    loan = (
+        db.query(LoanApplication)
+        .filter(LoanApplication.id == loan_id, LoanApplication.user_id == current_user.id)
+        .first()
+    )
+    if not loan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Loan not found")
+    if loan.status != "disbursed":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Payments can only be made on disbursed loans")
+
+    installment = (
+        db.query(RepaymentInstallment)
+        .filter(RepaymentInstallment.id == installment_id, RepaymentInstallment.loan_id == loan_id)
+        .first()
+    )
+    if not installment:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Installment not found")
+    if installment.status == "paid":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Installment already paid")
+
+    now = datetime.now(timezone.utc)
+    amount_due = float(installment.emi_amount) + float(installment.penalty_amount or 0)
+    installment.paid_amount = payload.paid_amount if payload.paid_amount is not None else amount_due
+    installment.paid_at = now
+    installment.status = "paid"
+
+    # Auto-close loan when all installments are paid
+    all_paid = (
+        db.query(RepaymentInstallment)
+        .filter(
+            RepaymentInstallment.loan_id == loan_id,
+            RepaymentInstallment.id != installment_id,
+            RepaymentInstallment.status != "paid",
+        )
+        .count()
+        == 0
+    )
+    if all_paid:
+        loan.status = "closed"
+
+    db.commit()
+    db.refresh(installment)
+    return installment
 
 
 @router.get("/{loan_id}/disbursement", response_model=DisbursementResponse)

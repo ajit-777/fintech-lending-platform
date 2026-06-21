@@ -1,5 +1,5 @@
 """Integration tests for the borrower loan lifecycle."""
-from tests.conftest import LOAN_PAYLOAD, auth_headers, register
+from tests.conftest import LOAN_PAYLOAD, accept_agreement, auth_headers, register, register_admin
 
 
 def test_apply_loan_auto_approved(client):
@@ -87,3 +87,80 @@ def test_apply_loan_invalid_ifsc(client):
     payload = {**LOAN_PAYLOAD, "ifsc_code": "INVALID"}
     r = client.post("/loans", json=payload, headers=auth_headers(token))
     assert r.status_code == 422
+
+# ── Repayment payment tests ────────────────────────────────────────────────────
+
+_admin_counter = 0
+
+def _disburse_loan(client, loan_id):
+    """Helper: admin approves + disburses a loan (loan must already be approved by rules engine)."""
+    global _admin_counter
+    _admin_counter += 1
+    admin_token = register_admin(client, email=f"adm{_admin_counter}@test.com", phone=f"+9190000{90000 + _admin_counter}")
+    client.post(
+        f"/admin/loans/{loan_id}/disburse",
+        json={"reference_number": f"TEST-REF-{_admin_counter:03d}"},
+        headers=auth_headers(admin_token),
+    )
+
+
+def test_pay_installment_on_disbursed_loan(client):
+    token = register(client)
+    loan = client.post("/loans", json=LOAN_PAYLOAD, headers=auth_headers(token)).json()
+    accept_agreement(client, token, loan["id"])
+    _disburse_loan(client, loan["id"])
+
+    installments = client.get(f"/loans/{loan['id']}/repayments", headers=auth_headers(token)).json()
+    first = installments[0]
+
+    r = client.post(f"/loans/{loan['id']}/repayments/{first['id']}/pay",
+        json={}, headers=auth_headers(token))
+    assert r.status_code == 200
+    data = r.json()
+    assert data["status"] == "paid"
+    assert data["paid_at"] is not None
+    assert data["paid_amount"] == data["emi_amount"]
+
+
+def test_pay_installment_already_paid(client):
+    token = register(client)
+    loan = client.post("/loans", json=LOAN_PAYLOAD, headers=auth_headers(token)).json()
+    accept_agreement(client, token, loan["id"])
+    _disburse_loan(client, loan["id"])
+
+    installments = client.get(f"/loans/{loan['id']}/repayments", headers=auth_headers(token)).json()
+    first_id = installments[0]["id"]
+
+    client.post(f"/loans/{loan['id']}/repayments/{first_id}/pay", json={}, headers=auth_headers(token))
+    r = client.post(f"/loans/{loan['id']}/repayments/{first_id}/pay", json={}, headers=auth_headers(token))
+    assert r.status_code == 400
+    assert "already paid" in r.json()["detail"]
+
+
+def test_pay_installment_on_approved_not_disbursed(client):
+    token = register(client)
+    loan = client.post("/loans", json=LOAN_PAYLOAD, headers=auth_headers(token)).json()
+
+    installments = client.get(f"/loans/{loan['id']}/repayments", headers=auth_headers(token)).json()
+    r = client.post(f"/loans/{loan['id']}/repayments/{installments[0]['id']}/pay",
+        json={}, headers=auth_headers(token))
+    assert r.status_code == 400
+    assert "disbursed" in r.json()["detail"]
+
+
+def test_loan_auto_closes_when_all_installments_paid(client):
+    # Use 1-month tenure + small amount so rules engine auto-approves
+    token = register(client)
+    payload = {**LOAN_PAYLOAD, "tenure_months": 1, "amount": 20000}
+    loan = client.post("/loans", json=payload, headers=auth_headers(token)).json()
+    accept_agreement(client, token, loan["id"])
+    _disburse_loan(client, loan["id"])
+
+    installments = client.get(f"/loans/{loan['id']}/repayments", headers=auth_headers(token)).json()
+    assert len(installments) == 1
+
+    client.post(f"/loans/{loan['id']}/repayments/{installments[0]['id']}/pay",
+        json={}, headers=auth_headers(token))
+
+    loan_data = client.get(f"/loans/{loan['id']}", headers=auth_headers(token)).json()
+    assert loan_data["status"] == "closed"

@@ -40,4 +40,9 @@ class LoanService {
     final response = await ApiClient.get('/loans/$loanId/repayments') as List;
     return response.map((e) => RepaymentInstallment.fromJson(e)).toList();
   }
+
+  static Future<RepaymentInstallment> payInstallment(String loanId, String installmentId) async {
+    final response = await ApiClient.post('/loans/$loanId/repayments/$installmentId/pay', {});
+    return RepaymentInstallment.fromJson(response);
+  }
 }

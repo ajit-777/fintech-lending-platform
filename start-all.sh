@@ -1,11 +1,12 @@
 #!/bin/bash
-# Start all platform services: backend, admin portal, Flutter
-# Usage: ./start-all.sh [android|ios|chrome]   (Flutter target, default: android)
+# Start backend and admin portal.
+# For Flutter/Android: run ./launch-android.sh (launches emulator + Flutter together)
+# Usage: ./start-all.sh
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-FLUTTER_TARGET="${1:-android}"
+ADB="$HOME/Library/Android/sdk/platform-tools/adb"
 
-mkdir -p "$ROOT/backend/logs" "$ROOT/admin/logs" "$ROOT/frontend/logs"
+mkdir -p "$ROOT/backend/logs" "$ROOT/admin/logs"
 
 # ── Backend ───────────────────────────────────────────────────────────────────
 echo "==> Starting backend..."
@@ -28,24 +29,10 @@ echo $! > admin.pid
 echo "    PID $(cat admin.pid) — logs/admin.log"
 echo "    URL: http://localhost:5173"
 
-# ── Flutter ───────────────────────────────────────────────────────────────────
-echo "==> Starting Flutter (target: $FLUTTER_TARGET)..."
-pkill -f "flutter run" 2>/dev/null || true
-cd "$ROOT/frontend"
-# Auto-detect running emulator if target is 'android'
-if [ "$FLUTTER_TARGET" = "android" ]; then
-  EMULATOR_ID=$(adb devices 2>/dev/null | grep "emulator.*device$" | awk '{print $1}' | head -1)
-  if [ -n "$EMULATOR_ID" ]; then
-    FLUTTER_TARGET="$EMULATOR_ID"
-    echo "    Auto-detected emulator: $EMULATOR_ID"
-  fi
-fi
-nohup flutter run -d "$FLUTTER_TARGET" > logs/flutter.log 2>&1 &
-echo $! > flutter.pid
-echo "    PID $(cat flutter.pid) — logs/flutter.log"
-
 echo ""
-echo "All services started. To tail logs:"
+echo "Backend and admin portal started."
+echo "To start Flutter: ./launch-android.sh  (or ./launch-ios.sh)"
+echo ""
+echo "Logs:"
 echo "  Backend : tail -f backend/logs/backend.log"
 echo "  Admin   : tail -f admin/logs/admin.log"
-echo "  Flutter : tail -f frontend/logs/flutter.log"

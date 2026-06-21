@@ -10,6 +10,7 @@ class RepaymentInstallment {
   final String status;
   final DateTime? paidAt;
   final double? paidAmount;
+  final double? penaltyAmount;
 
   RepaymentInstallment({
     required this.id,
@@ -23,6 +24,7 @@ class RepaymentInstallment {
     required this.status,
     this.paidAt,
     this.paidAmount,
+    this.penaltyAmount,
   });
 
   factory RepaymentInstallment.fromJson(Map<String, dynamic> json) => RepaymentInstallment(
@@ -37,5 +39,6 @@ class RepaymentInstallment {
         status: json['status'],
         paidAt: json['paid_at'] != null ? DateTime.parse(json['paid_at']) : null,
         paidAmount: json['paid_amount'] != null ? (json['paid_amount'] as num).toDouble() : null,
+        penaltyAmount: json['penalty_amount'] != null ? (json['penalty_amount'] as num).toDouble() : null,
       );
 }

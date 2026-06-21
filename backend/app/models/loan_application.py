@@ -60,7 +60,7 @@ class LoanApplication(Base):
     late_payment_penalty_pct: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False, default=0)
 
     status: Mapped[str] = mapped_column(
-        Enum("pending", "approved", "rejected", "disbursed", name="loan_status"),
+        Enum("pending", "approved", "rejected", "disbursed", "closed", name="loan_status"),
         default="pending",
         nullable=False,
     )

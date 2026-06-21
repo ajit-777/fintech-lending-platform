@@ -37,16 +37,48 @@ class _ApplyLoanScreenState extends State<ApplyLoanScreen> {
         ifscCode: _ifscController.text.trim().toUpperCase(),
       );
       if (mounted) {
-        final bankMsg = loan.bankAccountVerified == true
-            ? 'Bank account verified ✓'
-            : 'Bank account name mismatch — admin review required';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Application submitted — ${loan.status.toUpperCase()}. $bankMsg'),
-            duration: const Duration(seconds: 4),
-          ),
-        );
-        Navigator.pop(context);
+        if (loan.bankAccountVerified == true) {
+          // Success — snackbar on the home screen after pop
+          Navigator.pop(context, 'submitted');
+        } else {
+          // Name mismatch — show dialog before leaving so user doesn't miss it
+          await showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (_) => AlertDialog(
+              title: const Text('Application Submitted'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Status: ${loan.status.toUpperCase()}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.orange.shade300),
+                    ),
+                    child: const Text(
+                      '⚠️ Bank account name mismatch\n\nThe name on your bank account does not match your KYC name. Your application has been submitted but an admin will review the bank account before disbursal.',
+                      style: TextStyle(fontSize: 13, height: 1.5),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop(); // close dialog
+                    Navigator.of(context).pop('submitted'); // go back to home
+                  },
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
+        }
       }
     } on ApiException catch (e) {
       if (e.statusCode == 403 && e.message.contains('KYC') && mounted) {
