@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from app.db.dependencies import get_db
@@ -15,7 +15,7 @@ from app.routers.users import get_current_user
 from app.schemas.disbursement import DisbursementResponse
 from app.schemas.loan_application import LoanApplicationCreate, LoanApplicationResponse
 from app.schemas.repayment import RepaymentInstallmentResponse, RepaymentPaymentRequest
-from app.services import loan_rules, notifications, penny_drop, repayment_schedule
+from app.services import loan_rules, notifications, penny_drop, repayment_schedule, statement_pdf
 
 router = APIRouter(prefix="/loans", tags=["Loans"])
 
@@ -313,6 +313,39 @@ def get_disbursement(
     if not disbursement:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Disbursement record not found")
     return disbursement
+
+
+@router.get("/{loan_id}/statement.pdf")
+def download_statement(
+    loan_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    loan = (
+        db.query(LoanApplication)
+        .filter(LoanApplication.id == loan_id, LoanApplication.user_id == current_user.id)
+        .first()
+    )
+    if not loan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Loan application not found")
+    if loan.status not in ("approved", "disbursed", "closed"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Statement is only available for approved or disbursed loans")
+
+    installments = (
+        db.query(RepaymentInstallment)
+        .filter(RepaymentInstallment.loan_id == loan_id)
+        .order_by(RepaymentInstallment.installment_number)
+        .all()
+    )
+    disbursement = db.query(Disbursement).filter(Disbursement.loan_id == loan_id).first()
+
+    pdf_bytes = statement_pdf.generate(loan, current_user, installments, disbursement)
+    filename = f"statement_{str(loan_id)[:8].upper()}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/{loan_id}", response_model=LoanApplicationResponse)

@@ -65,4 +65,17 @@ class ApiClient {
     );
     return _decode(response);
   }
+
+  static Future<List<int>> getBytes(String path, {bool authorized = true}) async {
+    final token = authorized ? await getToken() : null;
+    final headers = <String, String>{};
+    if (token != null) headers['Authorization'] = 'Bearer $token';
+    final response = await http.get(Uri.parse('$baseUrl$path'), headers: headers);
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return response.bodyBytes;
+    }
+    final body = response.body.isNotEmpty ? jsonDecode(response.body) : null;
+    final detail = body is Map && body['detail'] != null ? body['detail'].toString() : 'Request failed';
+    throw ApiException(response.statusCode, detail);
+  }
 }

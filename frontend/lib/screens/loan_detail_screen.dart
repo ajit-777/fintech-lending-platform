@@ -4,6 +4,7 @@ import '../models/loan_application.dart';
 import '../models/repayment_installment.dart';
 import '../services/loan_service.dart';
 import 'agreement_screen.dart';
+import 'statement_screen.dart';
 
 class LoanDetailScreen extends StatefulWidget {
   final String loanId;
@@ -108,6 +109,24 @@ class _LoanDetailScreenState extends State<LoanDetailScreen> {
                 ],
 
                 if (loan.status == 'approved' || loan.status == 'disbursed' || loan.status == 'closed') ...[
+                  OutlinedButton.icon(
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => StatementScreen(
+                          loanId: loan.id,
+                          loanRef: loan.id.substring(0, 8).toUpperCase(),
+                        ),
+                      ),
+                    ),
+                    icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
+                    label: const Text('Download Statement'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.indigo.shade700,
+                      side: BorderSide(color: Colors.indigo.shade300),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
                   const Text('Repayment Schedule', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
                   FutureBuilder<List<RepaymentInstallment>>(
