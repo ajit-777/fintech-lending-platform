@@ -7,6 +7,7 @@ const STATUS_COLORS = {
   approved: 'bg-green-100 text-green-800',
   rejected: 'bg-red-100 text-red-800',
   disbursed: 'bg-blue-100 text-blue-800',
+  closed: 'bg-gray-100 text-gray-600',
 };
 
 export default function Dashboard() {
@@ -15,12 +16,13 @@ export default function Dashboard() {
   const [filter, setFilter] = useState('');
   const [search, setSearch] = useState('');
 
-  async function load() {
+  async function load(overrideSearch) {
     setLoading(true);
     try {
       const params = {};
       if (filter) params.status = filter;
-      if (search.trim()) params.identifier = search.trim();
+      const term = overrideSearch !== undefined ? overrideSearch : search.trim();
+      if (term) params.identifier = term;
       const res = await getLoans(params);
       setLoans(res.data);
     } catch {
@@ -37,6 +39,11 @@ export default function Dashboard() {
     load();
   }
 
+  function handleClearSearch() {
+    setSearch('');
+    load('');
+  }
+
   const counts = loans.reduce((acc, l) => {
     acc[l.status] = (acc[l.status] || 0) + 1;
     return acc;
@@ -48,7 +55,7 @@ export default function Dashboard() {
 
       {/* Summary chips */}
       <div className="flex gap-3 mb-6 flex-wrap">
-        {['pending', 'approved', 'disbursed', 'rejected'].map((s) => (
+        {['pending', 'approved', 'disbursed', 'rejected', 'closed'].map((s) => (
           <button
             key={s}
             onClick={() => setFilter(filter === s ? '' : s)}
@@ -78,7 +85,11 @@ export default function Dashboard() {
           Search
         </button>
         {search && (
-          <button type="button" onClick={() => { setSearch(''); load(); }} className="text-sm text-gray-400 hover:text-gray-600 underline">
+          <button
+            type="button"
+            onClick={handleClearSearch}
+            className="text-sm text-gray-400 hover:text-gray-600 underline"
+          >
             Clear
           </button>
         )}

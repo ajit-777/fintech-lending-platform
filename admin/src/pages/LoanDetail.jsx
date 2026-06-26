@@ -18,6 +18,7 @@ const STATUS_COLORS = {
 export default function LoanDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const isAdmin = localStorage.getItem('admin_role') === 'admin';
   const [loan, setLoan] = useState(null);
   const [repayments, setRepayments] = useState([]);
   const [kyc, setKyc] = useState(null);
@@ -224,7 +225,7 @@ export default function LoanDetail() {
             </div>
           ))}
         </div>
-        {!loan.bank_account_verified && !loan.bank_account_override && (
+        {isAdmin && !loan.bank_account_verified && !loan.bank_account_override && (
           <div className="mt-4">
             <p className="text-xs text-gray-400 mb-2">
               Name mismatch between KYC and bank records. Review manually before overriding.
@@ -283,7 +284,7 @@ export default function LoanDetail() {
         ) : (
           <p className="text-sm text-gray-400">Borrower has not submitted KYC details yet.</p>
         )}
-        {kyc && kyc.kyc_status !== 'verified' && (
+        {isAdmin && kyc && kyc.kyc_status !== 'verified' && (
           <div className="flex gap-3 mt-4">
             <button
               onClick={handleKYCApprove}
@@ -305,8 +306,8 @@ export default function LoanDetail() {
         )}
       </div>
 
-      {/* Action buttons */}
-      <div className="flex gap-3 mb-6 flex-wrap">
+      {/* Action buttons — admin only */}
+      {isAdmin && <div className="flex gap-3 mb-6 flex-wrap">
         {loan.status === 'pending' && (
           <>
             <button
@@ -334,7 +335,7 @@ export default function LoanDetail() {
             Disburse Loan
           </button>
         )}
-      </div>
+      </div>}
 
       {/* Repayment schedule */}
       {repayments.length > 0 && (
@@ -372,7 +373,7 @@ export default function LoanDetail() {
                     {r.penalty_amount ? `₹${parseFloat(r.penalty_amount).toLocaleString('en-IN')}` : '—'}
                   </td>
                   <td className="px-4 py-3">
-                    {(r.status === 'pending' || r.status === 'overdue') && (
+                    {isAdmin && (r.status === 'pending' || r.status === 'overdue') && (
                       <button
                         onClick={() => handleMarkPaid(r.id)}
                         disabled={actionLoading === `pay-${r.id}`}
