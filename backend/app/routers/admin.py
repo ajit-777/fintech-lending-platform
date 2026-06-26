@@ -333,7 +333,7 @@ def override_kyc_status(
 # ── Pricing ───────────────────────────────────────────────────────────────────
 
 @router.get("/pricing", response_model=List[PricingConfigResponse])
-def list_pricing(admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+def list_pricing(admin: User = Depends(require_support), db: Session = Depends(get_db)):
     return db.query(PricingConfig).order_by(PricingConfig.cibil_min.desc()).all()
 
 
@@ -430,6 +430,28 @@ def update_staff_role(
     db.commit()
     db.refresh(user)
     return user
+
+
+class StaffPasswordReset(BaseModel):
+    new_password: str = Field(..., min_length=8)
+
+
+@router.patch("/users/{user_id}/password", status_code=status.HTTP_204_NO_CONTENT)
+def reset_staff_password(
+    user_id: uuid.UUID,
+    payload: StaffPasswordReset,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    if user.role not in STAFF_ROLES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Can only reset password for staff users")
+    user.password_hash = hash_password(payload.new_password)
+    user.failed_login_attempts = 0
+    user.locked_until = None
+    db.commit()
 
 
 @router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)

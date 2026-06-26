@@ -15,6 +15,10 @@ export default function Users() {
   const [form, setForm] = useState({ email: '', phone: '', password: '', role: 'superuser' });
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [resetTarget, setResetTarget] = useState(null); // { id, email }
+  const [newPassword, setNewPassword] = useState('');
+  const [resetError, setResetError] = useState('');
+  const [resetting, setResetting] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -38,10 +42,12 @@ export default function Users() {
     try {
       await api.post('/admin/users', form);
       setShowForm(false);
+      setFormError('');
       setForm({ email: '', phone: '', password: '', role: 'superuser' });
-      load();
+      await load();
     } catch (e) {
-      setFormError(e.response?.data?.detail || 'Failed to create user');
+      const d = e.response?.data?.detail;
+      setFormError(Array.isArray(d) ? d.map(x => x.msg).join(', ') : (d || 'Failed to create user'));
     } finally {
       setSubmitting(false);
     }
@@ -53,6 +59,22 @@ export default function Users() {
       load();
     } catch (e) {
       alert(e.response?.data?.detail || 'Failed to update role');
+    }
+  }
+
+  async function resetPassword(e) {
+    e.preventDefault();
+    setResetting(true);
+    setResetError('');
+    try {
+      await api.patch(`/admin/users/${resetTarget.id}/password`, { new_password: newPassword });
+      setResetTarget(null);
+      setNewPassword('');
+    } catch (e) {
+      const d = e.response?.data?.detail;
+      setResetError(Array.isArray(d) ? d.map(x => x.msg).join(', ') : (d || 'Failed to reset password'));
+    } finally {
+      setResetting(false);
     }
   }
 
@@ -202,6 +224,12 @@ export default function Users() {
                         </button>
                       )}
                       <button
+                        onClick={() => { setResetTarget({ id: u.id, email: u.email }); setNewPassword(''); setResetError(''); }}
+                        className="text-xs px-3 py-1 border border-gray-200 rounded-lg text-gray-500 hover:border-indigo-300 hover:text-indigo-600 transition"
+                      >
+                        Reset Password
+                      </button>
+                      <button
                         onClick={() => deleteUser(u.id, u.email)}
                         className="text-xs px-3 py-1 border border-red-200 rounded-lg text-red-500 hover:bg-red-50 transition"
                       >
@@ -213,6 +241,47 @@ export default function Users() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {resetTarget && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
+            <h3 className="text-lg font-semibold mb-1">Reset Password</h3>
+            <p className="text-sm text-gray-500 mb-4">{resetTarget.email}</p>
+            <form onSubmit={resetPassword} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">New Password</label>
+                <input
+                  type="password"
+                  required
+                  minLength={8}
+                  value={newPassword}
+                  onChange={e => setNewPassword(e.target.value)}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 outline-none"
+                  placeholder="Min. 8 characters"
+                  autoFocus
+                />
+              </div>
+              {resetError && <p className="text-red-600 text-sm">{resetError}</p>}
+              <div className="flex gap-3 justify-end pt-1">
+                <button
+                  type="button"
+                  onClick={() => { setResetTarget(null); setResetError(''); }}
+                  className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={resetting}
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  {resetting ? 'Saving…' : 'Set Password'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 
